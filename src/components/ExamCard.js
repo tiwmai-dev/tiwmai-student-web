@@ -4,7 +4,6 @@ const ExamCard = ({
   quiz,
   attempts,
   latestScore,
-  purpose,
   difficulty,
   questionCount,
   statusBadges = [],
@@ -41,7 +40,6 @@ const ExamCard = ({
               {badge.label}
             </span>
           ))}
-          {purpose && <span className="badge badge-purpose">{purpose}</span>}
           {difficulty && <span className={`badge badge-difficulty ${difficulty.className}`}>{difficulty.label}</span>}
         </div>
       </div>

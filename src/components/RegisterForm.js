@@ -128,32 +128,62 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
 
   if (success) {
     if (emailVerificationRequired) {
+      const verificationEmail = registeredEmail || formData.email;
+
       return (
         <div className="auth-form register-auth-form">
-          <div className="success-message email-verification-message" role="status" aria-live="polite">
-            <div className="success-icon" aria-hidden="true">✉</div>
-            <h2>กรุณายืนยันอีเมล</h2>
-            <p>เราได้ส่งลิงก์ยืนยันไปที่</p>
-            <p className="verification-email">{registeredEmail || formData.email}</p>
-            <p>กรุณากดลิงก์ในอีเมลเพื่อเปิดใช้งานบัญชี แล้วจึงเข้าสู่ระบบได้</p>
+          <div
+            className="email-verification-panel"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="email-verification-header">
+              <div className="email-verification-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <path d="m3 7 9 6 9-6" />
+                </svg>
+              </div>
+              <h2>กรุณายืนยันอีเมล</h2>
+              <p className="email-verification-lead">
+                สมัครสมาชิกสำเร็จแล้ว ขั้นตอนสุดท้ายคือยืนยันอีเมลเพื่อเปิดใช้งานบัญชี
+              </p>
+            </div>
+
+            <div className="email-verification-card">
+              <span className="email-verification-card-label">ส่งลิงก์ยืนยันไปที่</span>
+              <strong className="email-verification-email">{verificationEmail}</strong>
+            </div>
+
+            <ul className="email-verification-steps">
+              <li>เปิดกล่องจดหมายและกดลิงก์ยืนยัน</li>
+              <li>หากไม่เจอ ให้ตรวจโฟลเดอร์ Spam / Junk</li>
+              <li>หลังยืนยันแล้ว กลับมาเข้าสู่ระบบได้ทันที</li>
+            </ul>
+
             {resendMessage && (
-              <p className="verification-resend-message" role="status">{resendMessage}</p>
+              <p className="email-verification-feedback" role="status">
+                {resendMessage}
+              </p>
             )}
-            <button
-              type="button"
-              onClick={handleResendVerification}
-              className="auth-secondary-btn"
-              disabled={isLoading}
-            >
-              {isLoading ? 'กำลังส่งอีเมล...' : 'ส่งอีเมลยืนยันอีกครั้ง'}
-            </button>
-            <button
-              type="button"
-              onClick={onSwitchToLogin}
-              className="auth-submit-btn"
-            >
-              ไปหน้าเข้าสู่ระบบ
-            </button>
+
+            <div className="email-verification-actions">
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="auth-submit-btn"
+              >
+                ไปหน้าเข้าสู่ระบบ
+              </button>
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                className="auth-secondary-btn email-verification-resend-btn"
+                disabled={isLoading}
+              >
+                {isLoading ? 'กำลังส่งอีเมล...' : 'ส่งอีเมลยืนยันอีกครั้ง'}
+              </button>
+            </div>
           </div>
         </div>
       );

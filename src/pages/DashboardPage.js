@@ -274,6 +274,40 @@ const toNumber = (...values) => {
   return 0;
 };
 
+const getCourseLiveMetrics = (course, liveCourseStats = {}) => {
+  const courseId = course?.id || course?.course_id;
+  const live = courseId ? liveCourseStats[courseId] : null;
+  return {
+    totalQuizzes: toNumber(live?.totalQuizzes, course?.totalQuizzes, course?.total_quizzes),
+    completedQuizzes: toNumber(live?.completedQuizzes, course?.completedQuizzes, course?.completed_quizzes),
+    progress: toNumber(live?.progress, course?.progress),
+  };
+};
+
+const isEmptyDuplicateEnrollment = (course, allCourses, liveCourseStats) => {
+  const title = normalizeText(course?.name || course?.title);
+  if (!title) return false;
+
+  const metrics = getCourseLiveMetrics(course, liveCourseStats);
+  if (metrics.totalQuizzes > 0 || metrics.completedQuizzes > 0 || metrics.progress > 0) {
+    return false;
+  }
+
+  const courseId = String(course?.id || course?.course_id || '');
+  return allCourses.some((other) => {
+    const otherId = String(other?.id || other?.course_id || '');
+    if (!otherId || otherId === courseId) return false;
+    if (normalizeText(other?.name || other?.title) !== title) return false;
+
+    const otherMetrics = getCourseLiveMetrics(other, liveCourseStats);
+    return (
+      otherMetrics.totalQuizzes > 0
+      || otherMetrics.completedQuizzes > 0
+      || otherMetrics.progress > 0
+    );
+  });
+};
+
 const WEEKDAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 const DASHBOARD_TIME_ZONE = 'Asia/Bangkok';
 
@@ -794,8 +828,14 @@ const DashboardPage = ({ user, onShowAuth }) => {
     () => (Array.isArray(enrolledCoursesState) ? enrolledCoursesState : []),
     [enrolledCoursesState]
   );
+  const visibleEnrolledCourses = useMemo(
+    () => enrolledCourses.filter(
+      (course) => !isEmptyDuplicateEnrollment(course, enrolledCourses, liveCourseStats)
+    ),
+    [enrolledCourses, liveCourseStats]
+  );
   const enrichedEnrolledCourses = useMemo(() => {
-    return enrolledCourses.map((course) => {
+    return visibleEnrolledCourses.map((course) => {
       const id = course?.id || course?.course_id;
       if (!id) return course;
       const live = liveCourseStats[id];
@@ -826,7 +866,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
           : (Array.isArray(course?.learningActivityDays) ? course.learningActivityDays : []),
       };
     });
-  }, [enrolledCourses, liveCourseStats]);
+  }, [visibleEnrolledCourses, liveCourseStats]);
   const displayName = user?.onboarding?.profile?.nickname || user?.name || user?.given_name || '';
   const resolvedUserId = useMemo(() => {
     const candidates = [user?.user_id, user?.id, user?.studentId, user?.username]

@@ -3,6 +3,13 @@ import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
 import loginBannerImage from '../assets/images/illustrations/auth-login-banner.webp';
 
+const BrandWordmark = () => (
+  <span className="auth-modal-brand" aria-label="TEWMai">
+    <span className="auth-modal-brand-tew">TEW</span>
+    <span className="auth-modal-brand-mai">Mai</span>
+  </span>
+);
+
 const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode);
   const isRegisterMode = mode === 'register';
@@ -80,11 +87,11 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
               <h3>
                 {isRegisterMode ? (
                   <>
-                    เริ่มต้นกับ <span>TEWMai</span>
+                    เริ่มต้นกับ <BrandWordmark />
                   </>
                 ) : (
                   <>
-                    ยินดีต้อนรับสู่ <span>TEWMai</span>
+                    ยินดีต้อนรับสู่ <BrandWordmark />
                   </>
                 )}
               </h3>
