@@ -14401,6 +14401,22 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.email-verification-message .verification-email {
+  font-weight: 600;
+  color: #2d3748;
+  word-break: break-word;
+}
+
+.verification-resend-panel,
+.verification-resend-message {
+  margin-top: 0.75rem;
+}
+
+.verification-resend-message {
+  color: #2f855a;
+  text-align: center;
+}
+
 /* Responsive Authentication Styles */
 @media (max-width: 768px) {
   .auth-modal {

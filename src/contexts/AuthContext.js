@@ -384,7 +384,12 @@ export const AuthProvider = ({ children }) => {
 
       if (response.ok) {
         trackEvent('sign_up', { method: 'password' });
-        return { success: true, message: data.message };
+        return {
+          success: true,
+          message: data.message,
+          email: data.email,
+          emailVerificationRequired: Boolean(data.email_verification_required),
+        };
       } else {
         const errorMessage = formatApiError(data, 'Registration failed');
         setError(errorMessage);
@@ -432,6 +437,40 @@ export const AuthProvider = ({ children }) => {
         setError(errorMessage);
         return { success: false, error: errorMessage };
       }
+      const errorMessage = 'Network error. Please check your connection.';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resendVerificationEmail = async (email) => {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/student/auth/resend-verification-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return {
+          success: true,
+          message: data.message || 'ส่งอีเมลยืนยันแล้ว',
+        };
+      }
+
+      const errorMessage = formatApiError(data, 'ไม่สามารถส่งอีเมลยืนยันได้');
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } catch (error) {
       const errorMessage = 'Network error. Please check your connection.';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -760,6 +799,7 @@ export const AuthProvider = ({ children }) => {
     error,
     login,
     register,
+    resendVerificationEmail,
     startOAuthLogin,
     completeOAuthLogin,
     completeOAuthTokenLogin,
