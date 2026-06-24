@@ -783,7 +783,7 @@ const LessonPage = ({ user }) => {
                   user={user}
                   context={chatContext}
                   showEnergyBanner={false}
-                  onSuggestionSelect={(payload) => quizRef.current?.handleConfidenceResponse(payload)}
+                  onSuggestionSelect={(payload) => quizRef.current?.handleUnderstandingResponse(payload)}
                   onAiResponse={(payload) => quizRef.current?.handleAiResponseReceived(payload)}
                 />
               </div>

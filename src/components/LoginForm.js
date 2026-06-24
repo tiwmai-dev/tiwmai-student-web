@@ -12,8 +12,9 @@ const LoginForm = ({ onSwitchToRegister, onClose, showHeader = false }) => {
   const [touched, setTouched] = useState({});
   const [oauthInProgress, setOauthInProgress] = useState(false);
   const [suppressValidation, setSuppressValidation] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
   
-  const { login, startOAuthLogin, isLoading, error } = useAuth();
+  const { login, resendVerificationEmail, startOAuthLogin, isLoading, error } = useAuth();
   const showDemoLogin = useMemo(
     () => process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ENABLE_DEMO_LOGIN === 'true',
     []
@@ -118,6 +119,16 @@ const LoginForm = ({ onSwitchToRegister, onClose, showHeader = false }) => {
   const passwordErrorId = passwordError ? 'student-password-error' : undefined;
   const identifierErrorId = identifierError ? 'student-identifier-error' : undefined;
   const passwordAriaDescribedBy = [passwordHelperId, passwordErrorId].filter(Boolean).join(' ');
+  const isEmailNotVerifiedError = String(error || '').includes('ยืนยันอีเมล');
+  const canResendVerification = isEmailNotVerifiedError && formData.identifier.includes('@');
+
+  const handleResendVerification = async () => {
+    setResendMessage('');
+    const result = await resendVerificationEmail(formData.identifier.trim());
+    if (result.success) {
+      setResendMessage(result.message || 'ส่งอีเมลยืนยันแล้ว กรุณาตรวจสอบกล่องจดหมาย');
+    }
+  };
 
   return (
     <div className="auth-form login-auth-form">
@@ -131,6 +142,22 @@ const LoginForm = ({ onSwitchToRegister, onClose, showHeader = false }) => {
         <div className="error-message" role="alert" aria-live="polite">
           <span className="error-icon" aria-hidden="true">❌</span>
           {error}
+        </div>
+      )}
+
+      {canResendVerification && (
+        <div className="verification-resend-panel">
+          {resendMessage && (
+            <p className="verification-resend-message" role="status">{resendMessage}</p>
+          )}
+          <button
+            type="button"
+            className="auth-secondary-btn"
+            onClick={handleResendVerification}
+            disabled={isLoading}
+          >
+            {isLoading ? 'กำลังส่งอีเมล...' : 'ส่งอีเมลยืนยันอีกครั้ง'}
+          </button>
         </div>
       )}
 

@@ -1,13 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 const DUPLICATE_EMAIL_MESSAGE = 'อีเมลนี้ถูกใช้สมัครบัญชีแล้ว';
+const DUPLICATE_USERNAME_MESSAGE = 'ชื่อผู้ใช้นี้ถูกใช้แล้ว';
 
 const isDuplicateEmailError = (message = '') => {
   const normalized = String(message || '').toLowerCase();
   return normalized.includes('email already exists')
     || normalized.includes('already registered')
-    || normalized.includes('อีเมลนี้ถูกใช้สมัครบัญชีแล้ว');
+    || normalized.includes(DUPLICATE_EMAIL_MESSAGE);
+};
+
+const isDuplicateUsernameError = (message = '') => {
+  const normalized = String(message || '').toLowerCase();
+  return normalized.includes('username already exists')
+    || normalized.includes(DUPLICATE_USERNAME_MESSAGE);
 };
 
 const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
@@ -22,20 +29,13 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [emailVerificationRequired, setEmailVerificationRequired] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   
-  const { register, startOAuthLogin, isLoading, error } = useAuth();
-
-  useEffect(() => {
-    if (!success) return undefined;
-
-    const switchTimer = setTimeout(() => {
-      onSwitchToLogin();
-    }, 3000);
-
-    return () => clearTimeout(switchTimer);
-  }, [onSwitchToLogin, success]);
+  const { register, resendVerificationEmail, startOAuthLogin, isLoading, error } = useAuth();
 
   const handleChange = (e) => {
     if (formError) {
@@ -95,11 +95,19 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
     const result = await register(registerData);
     
     if (result.success) {
+      setRegisteredEmail(result.email || formData.email);
+      setEmailVerificationRequired(Boolean(result.emailVerificationRequired));
+      setResendMessage('');
       setSuccess(true);
     } else if (isDuplicateEmailError(result.error)) {
       setFieldErrors((prev) => ({
         ...prev,
         email: DUPLICATE_EMAIL_MESSAGE,
+      }));
+    } else if (isDuplicateUsernameError(result.error)) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        username: DUPLICATE_USERNAME_MESSAGE,
       }));
     }
   };
@@ -110,7 +118,47 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
     startOAuthLogin('Google');
   };
 
+  const handleResendVerification = async () => {
+    setResendMessage('');
+    const result = await resendVerificationEmail(registeredEmail || formData.email);
+    if (result.success) {
+      setResendMessage(result.message || 'ส่งอีเมลยืนยันแล้ว กรุณาตรวจสอบกล่องจดหมาย');
+    }
+  };
+
   if (success) {
+    if (emailVerificationRequired) {
+      return (
+        <div className="auth-form register-auth-form">
+          <div className="success-message email-verification-message" role="status" aria-live="polite">
+            <div className="success-icon" aria-hidden="true">✉</div>
+            <h2>กรุณายืนยันอีเมล</h2>
+            <p>เราได้ส่งลิงก์ยืนยันไปที่</p>
+            <p className="verification-email">{registeredEmail || formData.email}</p>
+            <p>กรุณากดลิงก์ในอีเมลเพื่อเปิดใช้งานบัญชี แล้วจึงเข้าสู่ระบบได้</p>
+            {resendMessage && (
+              <p className="verification-resend-message" role="status">{resendMessage}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              className="auth-secondary-btn"
+              disabled={isLoading}
+            >
+              {isLoading ? 'กำลังส่งอีเมล...' : 'ส่งอีเมลยืนยันอีกครั้ง'}
+            </button>
+            <button
+              type="button"
+              onClick={onSwitchToLogin}
+              className="auth-submit-btn"
+            >
+              ไปหน้าเข้าสู่ระบบ
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="auth-form register-auth-form">
         <div className="success-message" role="status" aria-live="polite">
@@ -131,7 +179,10 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
   }
 
   const emailErrorId = fieldErrors.email ? 'register-email-error' : undefined;
-  const generalError = isDuplicateEmailError(error) ? '' : (error || formError);
+  const usernameErrorId = fieldErrors.username ? 'register-username-error' : undefined;
+  const generalError = isDuplicateEmailError(error) || isDuplicateUsernameError(error)
+    ? ''
+    : (error || formError);
 
   return (
     <div className="auth-form register-auth-form">
@@ -228,8 +279,15 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
               disabled={isLoading}
               minLength={3}
               autoComplete="username"
+              aria-invalid={Boolean(fieldErrors.username)}
+              aria-describedby={usernameErrorId}
             />
           </div>
+          {fieldErrors.username && (
+            <p className="field-error" id={usernameErrorId} role="alert">
+              {fieldErrors.username}
+            </p>
+          )}
         </div>
 
         <div className="form-group">

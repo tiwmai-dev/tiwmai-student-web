@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { setAnalyticsUser, trackEvent } from '../utils/analytics';
+import {
+  clearStoredAuthTokens,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  isRememberMeSession,
+  storeAuthTokens,
+} from '../utils/authTokenStorage';
 
 const AuthContext = createContext();
 
@@ -25,9 +32,6 @@ const UNKNOWN_ONBOARDING = {
 const POST_LOGIN_METADATA_TIMEOUT_MS = 8000;
 const ONBOARDING_RETRY_INTERVAL_MS = 10000;
 const AUTH_SESSION_INVALID_CODE = 'AUTH_SESSION_INVALID';
-const ACCESS_TOKEN_KEY = 'student_access_token';
-const REFRESH_TOKEN_KEY = 'student_refresh_token';
-const ID_TOKEN_KEY = 'student_id_token';
 
 const createKnownOnboarding = (completed, profile = null) => ({
   status: completed ? ONBOARDING_STATUS.COMPLETE : ONBOARDING_STATUS.INCOMPLETE,
@@ -112,29 +116,11 @@ export const AuthProvider = ({ children }) => {
   }, [user?.user_id, user?.id, user?.studentId]);
 
   const clearStoredAuth = () => {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(ID_TOKEN_KEY);
+    clearStoredAuthTokens();
   };
 
-  const storeTokens = (tokenData) => {
-    if (tokenData?.access_token) {
-      localStorage.setItem(ACCESS_TOKEN_KEY, tokenData.access_token);
-    } else {
-      localStorage.removeItem(ACCESS_TOKEN_KEY);
-    }
-
-    if (tokenData?.refresh_token) {
-      localStorage.setItem(REFRESH_TOKEN_KEY, tokenData.refresh_token);
-    } else {
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-    }
-
-    if (tokenData?.id_token) {
-      localStorage.setItem(ID_TOKEN_KEY, tokenData.id_token);
-    } else {
-      localStorage.removeItem(ID_TOKEN_KEY);
-    }
+  const storeTokens = (tokenData, { rememberMe = true } = {}) => {
+    storeAuthTokens(tokenData, { rememberMe });
   };
 
   const buildAuthHeaders = (token, headers = {}) => ({
@@ -156,10 +142,12 @@ export const AuthProvider = ({ children }) => {
       return refreshInFlightRef.current;
     }
 
-    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    const storedRefreshToken = getStoredRefreshToken();
     if (!storedRefreshToken) {
       return null;
     }
+
+    const rememberMe = isRememberMeSession();
 
     refreshInFlightRef.current = (async () => {
       const response = await fetch(`${API_BASE_URL}/student/auth/refresh`, {
@@ -177,7 +165,7 @@ export const AuthProvider = ({ children }) => {
         return null;
       }
 
-      storeTokens(data);
+      storeTokens(data, { rememberMe });
       return data.access_token;
     })();
 
@@ -308,7 +296,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const userData = await response.json();
-      const activeToken = localStorage.getItem(ACCESS_TOKEN_KEY) || token;
+      const activeToken = getStoredAccessToken() || token;
       const fullUserData = await enrichUserData(activeToken, userData);
       setUser((prev) => mergeUserWithStableOnboarding(prev, fullUserData));
       return fullUserData;
@@ -328,7 +316,7 @@ export const AuthProvider = ({ children }) => {
 
   // Check if user is authenticated on app load
   useEffect(() => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = getStoredAccessToken();
     if (token) {
       validateToken(token);
     } else {
@@ -340,7 +328,7 @@ export const AuthProvider = ({ children }) => {
     await loadAuthenticatedUser(token, { finishBootstrapping: true });
   };
 
-  const login = async (username, password) => {
+  const login = async (username, password, rememberMe = true) => {
     setError(null);
     setIsLoading(true);
 
@@ -356,7 +344,7 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
 
       if (response.ok) {
-        storeTokens(data);
+        storeTokens(data, { rememberMe });
 
         const fullUserData = await enrichUserData(data.access_token, data.user);
         setUser(fullUserData);
@@ -396,7 +384,12 @@ export const AuthProvider = ({ children }) => {
 
       if (response.ok) {
         trackEvent('sign_up', { method: 'password' });
-        return { success: true, message: data.message };
+        return {
+          success: true,
+          message: data.message,
+          email: data.email,
+          emailVerificationRequired: Boolean(data.email_verification_required),
+        };
       } else {
         const errorMessage = formatApiError(data, 'Registration failed');
         setError(errorMessage);
@@ -444,6 +437,40 @@ export const AuthProvider = ({ children }) => {
         setError(errorMessage);
         return { success: false, error: errorMessage };
       }
+      const errorMessage = 'Network error. Please check your connection.';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resendVerificationEmail = async (email) => {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/student/auth/resend-verification-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return {
+          success: true,
+          message: data.message || 'ส่งอีเมลยืนยันแล้ว',
+        };
+      }
+
+      const errorMessage = formatApiError(data, 'ไม่สามารถส่งอีเมลยืนยันได้');
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } catch (error) {
       const errorMessage = 'Network error. Please check your connection.';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -558,7 +585,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = getStoredAccessToken();
     
     try {
       if (token) {
@@ -582,7 +609,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const refreshUser = async () => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = getStoredAccessToken();
     if (!token) {
       return { success: false, error: 'Not authenticated' };
     }
@@ -607,7 +634,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const saveOnboardingProfile = async (payload) => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = getStoredAccessToken();
     if (!token) {
       return { success: false, error: 'Not authenticated' };
     }
@@ -645,7 +672,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const uploadAvatar = async (file) => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = getStoredAccessToken();
     if (!token) {
       return { success: false, error: 'Not authenticated' };
     }
@@ -698,7 +725,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = getStoredAccessToken();
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   };
 
@@ -736,7 +763,7 @@ export const AuthProvider = ({ children }) => {
 
     let isCancelled = false;
     const retryOnboarding = async () => {
-      const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+      const token = getStoredAccessToken();
       if (!token || !getStudentOnboardingRef.current) return;
 
       try {
@@ -772,6 +799,7 @@ export const AuthProvider = ({ children }) => {
     error,
     login,
     register,
+    resendVerificationEmail,
     startOAuthLogin,
     completeOAuthLogin,
     completeOAuthTokenLogin,

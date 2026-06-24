@@ -2,13 +2,21 @@
  * API utility functions for student frontend to communicate with the backend
  */
 
+import {
+  clearStoredAuthTokens,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  isRememberMeSession,
+  storeAuthTokens,
+} from './authTokenStorage';
+
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api/v1';
 
 /**
  * Get authentication headers
  */
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('student_access_token');
+  const token = getStoredAccessToken();
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -49,13 +57,8 @@ export const authAPI = {
       await handleApiError(response);
       const data = await response.json();
 
-      // Store tokens
-      if (data.access_token) {
-        localStorage.setItem('student_access_token', data.access_token);
-      }
-      if (data.refresh_token) {
-        localStorage.setItem('student_refresh_token', data.refresh_token);
-      }
+      // Store tokens (default to persistent session for legacy callers)
+      storeAuthTokens(data, { rememberMe: true });
 
       return data;
     } catch (error) {
@@ -122,7 +125,7 @@ export const authAPI = {
    */
   logout: async () => {
     try {
-      const token = localStorage.getItem('student_access_token');
+      const token = getStoredAccessToken();
       if (token) {
         await fetch(`${API_BASE_URL}/student/auth/logout`, {
           method: 'POST',
@@ -132,9 +135,7 @@ export const authAPI = {
     } catch (error) {
       console.error('Logout request failed:', error);
     } finally {
-      // Always clear local storage
-      localStorage.removeItem('student_access_token');
-      localStorage.removeItem('student_refresh_token');
+      clearStoredAuthTokens();
     }
   },
 
@@ -143,7 +144,7 @@ export const authAPI = {
    */
   refreshToken: async () => {
     try {
-      const refreshToken = localStorage.getItem('student_refresh_token');
+      const refreshToken = getStoredRefreshToken();
       if (!refreshToken) {
         throw new Error('No refresh token available');
       }
@@ -159,16 +160,12 @@ export const authAPI = {
       await handleApiError(response);
       const data = await response.json();
 
-      if (data.access_token) {
-        localStorage.setItem('student_access_token', data.access_token);
-      }
+      storeAuthTokens(data, { rememberMe: isRememberMeSession() });
 
       return data;
     } catch (error) {
       console.error('Token refresh failed:', error);
-      // Clear tokens on refresh failure
-      localStorage.removeItem('student_access_token');
-      localStorage.removeItem('student_refresh_token');
+      clearStoredAuthTokens();
       throw error;
     }
   }
@@ -704,8 +701,7 @@ const apiWithTokenRefresh = async (apiCall) => {
       } catch (refreshError) {
         // Refresh failed, redirect to login
         console.error('Token refresh failed, redirecting to login');
-        localStorage.removeItem('student_access_token');
-        localStorage.removeItem('student_refresh_token');
+        clearStoredAuthTokens();
         window.location.href = '/';
         throw refreshError;
       }

@@ -2989,7 +2989,7 @@ const CoursePage = ({ user }) => {
                 user={user}
                 context={splitChatContext}
                 showEnergyBanner={false}
-                onSuggestionSelect={(payload) => splitQuizRef.current?.handleConfidenceResponse(payload)}
+                onSuggestionSelect={(payload) => splitQuizRef.current?.handleUnderstandingResponse(payload)}
                 onAiResponse={(payload) => splitQuizRef.current?.handleAiResponseReceived(payload)}
               />
             </div>

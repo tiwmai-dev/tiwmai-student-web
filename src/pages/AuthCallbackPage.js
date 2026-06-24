@@ -26,6 +26,14 @@ const AuthCallbackPage = () => {
     const providerRefreshToken = hashParams.get('provider_refresh_token');
     const tokenType = hashParams.get('token_type');
     const expiresIn = hashParams.get('expires_in');
+    const confirmationType = hashParams.get('type');
+    const isEmailConfirmation = confirmationType === 'signup'
+      || confirmationType === 'email'
+      || confirmationType === 'email_change';
+
+    setMessage(
+      isEmailConfirmation ? 'กำลังยืนยันอีเมล...' : 'กำลังเชื่อมต่อบัญชี Google...'
+    );
 
     if (!code && !accessToken) {
       setMessage('ไม่พบรหัสยืนยันจากระบบ');
@@ -52,11 +60,14 @@ const AuthCallbackPage = () => {
           window.history.replaceState({}, document.title, window.location.pathname);
           navigate('/dashboard', { replace: true });
         } else {
-          setMessage(result.error || 'เชื่อมต่อบัญชีไม่สำเร็จ');
+          setMessage(
+            result.error
+              || (isEmailConfirmation ? 'ยืนยันอีเมลไม่สำเร็จ' : 'เชื่อมต่อบัญชีไม่สำเร็จ')
+          );
           setIsLoading(false);
         }
       } catch (error) {
-        setMessage('เชื่อมต่อบัญชีไม่สำเร็จ');
+        setMessage(isEmailConfirmation ? 'ยืนยันอีเมลไม่สำเร็จ' : 'เชื่อมต่อบัญชีไม่สำเร็จ');
         setIsLoading(false);
       }
     };
