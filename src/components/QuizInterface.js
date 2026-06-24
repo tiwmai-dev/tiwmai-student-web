@@ -50,9 +50,8 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
   const [firstAnswers, setFirstAnswers] = useState({});
   const [revealedAnswers, setRevealedAnswers] = useState({});
   const [submittedAnswers, setSubmittedAnswers] = useState({});
-  const [awaitingConfidence, setAwaitingConfidence] = useState({});
-  const [needsWorkImage, setNeedsWorkImage] = useState({});
-  const [awaitingFollowupReveal, setAwaitingFollowupReveal] = useState({});
+  const [awaitingUnderstanding, setAwaitingUnderstanding] = useState({});
+  const [awaitingExplanationHelp, setAwaitingExplanationHelp] = useState({});
   const [questionConfidence, setQuestionConfidence] = useState({});
   const [firstQuestionConfidence, setFirstQuestionConfidence] = useState({});
   const [showResults, setShowResults] = useState(false);
@@ -165,9 +164,8 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
     setFirstAnswers({});
     setRevealedAnswers({});
     setSubmittedAnswers({});
-    setAwaitingConfidence({});
-    setNeedsWorkImage({});
-    setAwaitingFollowupReveal({});
+    setAwaitingUnderstanding({});
+    setAwaitingExplanationHelp({});
     setQuestionConfidence({});
     setFirstQuestionConfidence({});
     setShowResults(false);
@@ -200,8 +198,10 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
     const currentQuestionId = selectedQuiz?.questions?.[currentQuestion]?.id;
     return Boolean(
       currentQuestionId
-      && answers[currentQuestionId] !== undefined
-      && awaitingConfidence[currentQuestionId]
+      && (
+        awaitingUnderstanding[currentQuestionId]
+        || awaitingExplanationHelp[currentQuestionId]
+      )
     );
   };
 
@@ -229,52 +229,76 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQuiz, selectedQuiz]);
 
-  const selectAnswer = (questionId, answerIndex) => {
-    const currentAnswer = answers[questionId];
-    const hasChangedAnswer = currentAnswer !== answerIndex;
-    const isAwaitingConfidence = Boolean(awaitingConfidence[questionId]);
-    const hasQuestionFlowState = Boolean(
-      questionConfidence[questionId]
-      || needsWorkImage[questionId]
-      || awaitingFollowupReveal[questionId]
-      || revealedAnswers[questionId]
-    );
+  const buildExplanationChatMessage = (question, userAnswerIndex) => {
+    const options = Array.isArray(question?.options) ? question.options : [];
+    const hasCorrect = typeof question?.correctAnswer === 'number'
+      && question.correctAnswer >= 0
+      && question.correctAnswer < options.length;
+    const isCorrect = hasCorrect && userAnswerIndex === question.correctAnswer;
+    const correctText = hasCorrect ? options[question.correctAnswer] : '';
+    const userText = typeof userAnswerIndex === 'number'
+      && userAnswerIndex >= 0
+      && userAnswerIndex < options.length
+      ? options[userAnswerIndex]
+      : '';
 
-    if (!hasChangedAnswer) return;
+    const lines = [];
+    if (!hasCorrect) {
+      lines.push('ℹ️ ยังไม่มีเฉลยในระบบสำหรับข้อนี้');
+    } else {
+      lines.push(isCorrect ? '✅ ถูกต้องค่ะ!' : '❌ ยังไม่ถูกนะคะ');
+      lines.push(
+        `เฉลยคือข้อ ${String.fromCharCode(65 + question.correctAnswer)}${correctText ? `: ${correctText}` : ''}`
+      );
+      if (!isCorrect && typeof userAnswerIndex === 'number') {
+        lines.push(
+          `คำตอบของคุณ: ${String.fromCharCode(65 + userAnswerIndex)}${userText ? `: ${userText}` : ''}`
+        );
+      }
+    }
+    if (question?.explanation) {
+      lines.push(`💡 คำอธิบาย: ${question.explanation}`);
+    }
+    lines.push('เข้าใจเฉลยไหม?');
+    return lines.join('\n\n');
+  };
+
+  const selectAnswer = (questionId, answerIndex) => {
+    if (submittedAnswers[questionId]) return;
+    if (answers[questionId] === answerIndex) return;
 
     setAnswers(prev => ({
       ...prev,
       [questionId]: answerIndex
     }));
+  };
 
-    // In split-screen mode, ask confidence via AI chat.
+  const confirmAnswer = (questionId) => {
+    if (submittedAnswers[questionId]) return;
+    const userAnswerIndex = answers[questionId];
+    if (userAnswerIndex === undefined) return;
+
+    const q = selectedQuiz?.questions?.find((item) => item.id === questionId);
+    if (!q) return;
+
+    setFirstAnswers(prev => (
+      Object.prototype.hasOwnProperty.call(prev, questionId)
+        ? prev
+        : { ...prev, [questionId]: userAnswerIndex }
+    ));
+    setSubmittedAnswers(prev => ({ ...prev, [questionId]: true }));
+    setRevealedAnswers(prev => ({ ...prev, [questionId]: true }));
+
     if (typeof onAddAiMessage === 'function') {
-      setFirstAnswers(prev => (
-        Object.prototype.hasOwnProperty.call(prev, questionId)
-          ? prev
-          : { ...prev, [questionId]: answerIndex }
-      ));
-
-      if (hasChangedAnswer) {
-        setRevealedAnswers(prev => ({ ...prev, [questionId]: false }));
-        setNeedsWorkImage(prev => ({ ...prev, [questionId]: false }));
-        setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: false }));
-        setQuestionConfidence(prev => ({ ...prev, [questionId]: null }));
-      }
-
-      setSubmittedAnswers(prev => ({ ...prev, [questionId]: true }));
-      setAwaitingConfidence(prev => ({ ...prev, [questionId]: true }));
-
-      if (!isAwaitingConfidence || hasQuestionFlowState) {
-        onAddAiMessage({
-          content: 'มั่นใจในคำตอบนี้ไหม?',
-          suggestions: [
-            { id: 'confident', label: 'มั่นใจ', payload: { questionId, confidence: 'confident' } },
-            { id: 'not_confident', label: 'ไม่มั่นใจ', payload: { questionId, confidence: 'not_confident' } },
-            { id: 'skip_confidence', label: 'ข้ามและดูเฉลย', payload: { questionId, confidence: 'skip' } },
-          ],
-        });
-      }
+      setAwaitingUnderstanding(prev => ({ ...prev, [questionId]: true }));
+      onAddAiMessage({
+        content: buildExplanationChatMessage(q, userAnswerIndex),
+        suggestions: [
+          { id: 'understood', label: 'เข้าใจแล้ว', payload: { questionId, understood: true } },
+          { id: 'not_understood', label: 'ยังไม่เข้าใจ', payload: { questionId, understood: false } },
+        ],
+      });
+      return;
     }
   };
 
@@ -336,9 +360,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
       allow_retry_after_ai_response: Boolean(
         !showResults
         && !answerRevealedForQuestion
-        && answerSubmittedForQuestion
-        && questionConfidence[q.id]
-        && questionConfidence[q.id] !== 'skipped'
+        && awaitingExplanationHelp[q.id]
       ),
     };
   };
@@ -432,9 +454,8 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
     setFirstAnswers({});
     setRevealedAnswers({});
     setSubmittedAnswers({});
-    setAwaitingConfidence({});
-    setNeedsWorkImage({});
-    setAwaitingFollowupReveal({});
+    setAwaitingUnderstanding({});
+    setAwaitingExplanationHelp({});
     setQuestionConfidence({});
     setFirstQuestionConfidence({});
     setShowResults(false);
@@ -482,143 +503,59 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
     });
   };
 
-  const handleConfidenceResponse = ({ questionId, confidence }) => {
+  const handleUnderstandingResponse = ({ questionId, understood }) => {
     if (!selectedQuiz || !questionId) return;
-    const q = selectedQuiz.questions?.find((item) => item.id === questionId);
-    if (!q) return;
-    if (!awaitingConfidence[questionId]) return;
-    const userAnswerIndex = answers[questionId];
-    const hasCorrectIndex = typeof q.correctAnswer === 'number';
-    const isAnswerCorrect = hasCorrectIndex && userAnswerIndex === q.correctAnswer;
-    const isRetryAnswer = Object.prototype.hasOwnProperty.call(firstAnswers, questionId)
-      && firstAnswers[questionId] !== userAnswerIndex;
+    if (!awaitingUnderstanding[questionId]) return;
 
-    setAwaitingConfidence(prev => ({ ...prev, [questionId]: false }));
+    setAwaitingUnderstanding(prev => ({ ...prev, [questionId]: false }));
     setQuestionConfidence(prev => ({
       ...prev,
-      [questionId]: confidence === 'confident'
-        ? 'confident'
-        : (confidence === 'not_confident' ? 'not_confident' : 'skipped'),
+      [questionId]: understood ? 'understood' : 'needs_help',
     }));
     setFirstQuestionConfidence(prev => (
       Object.prototype.hasOwnProperty.call(prev, questionId)
         ? prev
         : {
             ...prev,
-            [questionId]: confidence === 'confident'
-              ? 'confident'
-              : (confidence === 'not_confident' ? 'not_confident' : 'skipped'),
+            [questionId]: understood ? 'understood' : 'needs_help',
           }
     ));
 
-    if (confidence === 'skip') {
-      setNeedsWorkImage(prev => ({ ...prev, [questionId]: false }));
-      setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: false }));
-      setRevealedAnswers(prev => ({ ...prev, [questionId]: true }));
+    if (understood) {
       if (typeof onAddAiMessage === 'function') {
+        const q = selectedQuiz?.questions?.find((item) => item.id === questionId);
+        const userAnswerIndex = answers[questionId];
+        const hasCorrect = typeof q?.correctAnswer === 'number';
+        const isCorrect = hasCorrect && userAnswerIndex === q.correctAnswer;
         onAddAiMessage({
-          content: `ข้ามขั้นตอบ AI ให้แล้วค่ะ ✅ เฉลยคือข้อ ${String.fromCharCode(65 + q.correctAnswer)}${q.options?.[q.correctAnswer] ? `: ${q.options[q.correctAnswer]}` : ''}\n\n${q.explanation ? `💡 คำอธิบาย: ${q.explanation}` : ''}`.trim(),
+          content: isCorrect
+            ? 'เก่งมากค่ะ! เข้าใจแล้วดีใจด้วย 🎉 พร้อมไปข้อถัดไปได้เลย'
+            : 'ดีมากค่ะที่เข้าใจเฉลยแล้ว 💪 ไปต่อข้อถัดไปได้เลยนะ',
         });
       }
       return;
     }
 
-    // Correct + confident => reveal and explain immediately
-    if (confidence === 'confident' && isAnswerCorrect) {
-      setNeedsWorkImage(prev => ({ ...prev, [questionId]: false }));
-      setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: false }));
-      setRevealedAnswers(prev => ({ ...prev, [questionId]: true }));
-      if (typeof onAddAiMessage === 'function') {
-        onAddAiMessage({
-          content: `${isRetryAnswer ? '✅ รอบแก้ตอบถูกต้องแล้วค่ะ แต่คะแนนข้อนี้ยังนับจากคำตอบครั้งแรก\n\n' : '✅ ถูกต้องค่ะ! '}เฉลยคือข้อ ${String.fromCharCode(65 + q.correctAnswer)}${q.options?.[q.correctAnswer] ? `: ${q.options[q.correctAnswer]}` : ''}\n\n${q.explanation ? `💡 คำอธิบาย: ${q.explanation}` : ''}`.trim(),
-        });
-      }
-      return;
-    }
-
-    // Correct + not confident => ask where learner is stuck
-    if (confidence === 'not_confident' && isAnswerCorrect) {
-      setNeedsWorkImage(prev => ({ ...prev, [questionId]: false }));
-      setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: true }));
-      if (typeof onAddAiMessage === 'function') {
-        onAddAiMessage({
-          content: isRetryAnswer
-            ? 'รอบแก้ตอบถูกแล้วค่ะ แต่คะแนนข้อนี้ยังนับจากคำตอบครั้งแรกนะคะ ยังไม่มั่นใจตรงไหนบ้าง เล่าให้ฟังได้เลย เดี๋ยวช่วยอธิบายเพิ่มให้ค่ะ'
-            : 'ตอบถูกแล้วนะ เก่งมาก 🎉 แต่ยังไม่มั่นใจใช่ไหม ติดตรงไหนบ้าง เล่าให้ฟังได้เลย เดี๋ยวช่วยอธิบายเพิ่มให้ค่ะ',
-        });
-      }
-      return;
-    }
-
-    // Wrong + confident => request method for step-by-step evaluation
-    if (confidence === 'confident' && !isAnswerCorrect) {
-      setNeedsWorkImage(prev => ({ ...prev, [questionId]: true }));
-      setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: false }));
-      if (typeof onAddAiMessage === 'function') {
-        onAddAiMessage({
-          content: 'คำตอบนี้ยังไม่ถูกต้องนะคะ แต่เห็นว่ามั่นใจในคำตอบนี้อยู่ ลองส่งรูปวิธีทำมาในแชทได้เลย เดี๋ยวน้องติวช่วยดูว่าคลาดเคลื่อนตรงไหนให้ค่ะ',
-        });
-      }
-      return;
-    }
-
-    // Wrong + not confident => reassure and ask where learner is unsure
-    setNeedsWorkImage(prev => ({ ...prev, [questionId]: false }));
-    setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: true }));
+    setAwaitingExplanationHelp(prev => ({ ...prev, [questionId]: true }));
     if (typeof onAddAiMessage === 'function') {
       onAddAiMessage({
-        content: 'ผิดไม่เป็นไรนะคะ 💛 ยังไม่มั่นใจตรงไหนบ้าง บอกได้เลย เดี๋ยวช่วยพาไล่คิดทีละขั้นค่ะ',
+        content: 'ไม่เป็นไรค่ะ ไม่เข้าใจตรงไหนบ้าง? พิมพ์บอกได้เลย เดี๋ยวช่วยอธิบายเพิ่มให้',
       });
     }
-  };
-
-  const resetQuestionForRetry = (questionId) => {
-    setAnswers(prev => {
-      const next = { ...prev };
-      delete next[questionId];
-      return next;
-    });
-    setSubmittedAnswers(prev => ({ ...prev, [questionId]: false }));
-    setAwaitingConfidence(prev => ({ ...prev, [questionId]: false }));
-    setNeedsWorkImage(prev => ({ ...prev, [questionId]: false }));
-    setAwaitingFollowupReveal(prev => ({ ...prev, [questionId]: false }));
-    setQuestionConfidence(prev => ({ ...prev, [questionId]: null }));
-    setRevealedAnswers(prev => ({ ...prev, [questionId]: false }));
   };
 
   const handleAiResponseReceived = ({ questionId, hideUserBubble }) => {
-    // Ignore system-generated chat turns (e.g., hidden hint prompts)
     if (hideUserBubble) return;
-    if (!selectedQuiz) return;
 
     const fallbackQuestionId = selectedQuiz?.questions?.[currentQuestion]?.id;
     const targetQuestionId = questionId || fallbackQuestionId;
-    if (!targetQuestionId) return;
-    const shouldReveal = Boolean(needsWorkImage[targetQuestionId] || awaitingFollowupReveal[targetQuestionId]);
-    if (!shouldReveal) return;
+    if (!targetQuestionId || !awaitingExplanationHelp[targetQuestionId]) return;
 
-    const targetQuestion = selectedQuiz?.questions?.find((item) => item.id === targetQuestionId);
-    const userAnswerIndex = answers[targetQuestionId];
-    const hasCorrectAnswer = typeof targetQuestion?.correctAnswer === 'number';
-    const isRetryAnswerCorrect = hasCorrectAnswer && userAnswerIndex === targetQuestion.correctAnswer;
-
-    if (isRetryAnswerCorrect) {
-      setNeedsWorkImage(prev => ({ ...prev, [targetQuestionId]: false }));
-      setAwaitingFollowupReveal(prev => ({ ...prev, [targetQuestionId]: false }));
-      setRevealedAnswers(prev => ({ ...prev, [targetQuestionId]: true }));
-      return;
-    }
-
-    resetQuestionForRetry(targetQuestionId);
-    if (typeof onAddAiMessage === 'function') {
-      onAddAiMessage({
-        content: 'ลองเลือกคำตอบอีกครั้งได้เลยค่ะ ✨',
-      });
-    }
+    setAwaitingExplanationHelp(prev => ({ ...prev, [targetQuestionId]: false }));
   };
 
   useImperativeHandle(ref, () => ({
-    handleConfidenceResponse,
+    handleUnderstandingResponse,
     handleAiResponseReceived
   }));
 
@@ -928,7 +865,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
 
           <div className="answer-review">
             <h4>✅ เฉลยแบบทีละข้อ</h4>
-            <p>{hideHints ? 'ระบบแสดงเฉลยหลังส่งคำตอบทั้งหมดแล้ว' : 'ระบบแสดงเฉลยทันทีเมื่อเลือกช้อยส์ในแต่ละข้อแล้ว'}</p>
+            <p>{hideHints ? 'เฉลยและคำอธิบายแสดงในแชทน้องติวหลังกดยืนยันคำตอบ' : 'ระบบแสดงเฉลยหลังกดยืนยันคำตอบในแต่ละข้อ'}</p>
           </div>
 
           <div className="results-actions">
@@ -1091,9 +1028,12 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
   const difficultyMeta = getDifficultyMeta(question?.difficulty);
   const isNavigationLocked = Boolean(
     question?.id
-    && answers[question.id] !== undefined
-    && awaitingConfidence[question.id]
+    && (
+      awaitingUnderstanding[question.id]
+      || awaitingExplanationHelp[question.id]
+    )
   );
+  const isAnswerConfirmed = Boolean(question?.id && submittedAnswers[question.id]);
   if (!question) {
     return (
       <div className="quiz-interface">
@@ -1181,6 +1121,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
             <button
               key={index}
               onClick={() => selectAnswer(question.id, index)}
+              disabled={isAnswerConfirmed}
               className={`option-button ${
                 answers[question.id] === index ? 'selected' : ''
               } ${
@@ -1193,23 +1134,40 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
                 {String.fromCharCode(65 + index)}.
               </span>
               <span className="option-text"><MathText text={option} inline /></span>
-              {answers[question.id] === index && <span className="selected-mark">✓</span>}
+              {answers[question.id] === index && (
+                <span className="selected-mark">
+                  {isRevealed && hasCorrect && index !== question.correctAnswer ? '✗' : '✓'}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        {(awaitingConfidence[question.id] || needsWorkImage[question.id]) && (
+        {!isAnswerConfirmed ? (
+          <div className="question-submit-row">
+            <button
+              type="button"
+              className="submit-answer-button"
+              disabled={answers[question.id] === undefined}
+              onClick={() => confirmAnswer(question.id)}
+            >
+              ยืนยันคำตอบ
+            </button>
+          </div>
+        ) : null}
+
+        {isSplitMode && (awaitingUnderstanding[question.id] || awaitingExplanationHelp[question.id]) && (
           <div className="answer-actions">
-            {awaitingConfidence[question.id] && (
-              <span className="answer-status">รอเลือกความมั่นใจในแชทด้านขวา</span>
+            {awaitingUnderstanding[question.id] && (
+              <span className="answer-status">เลือกว่าเข้าใจเฉลยหรือไม่ในแชทด้านขวา</span>
             )}
-            {needsWorkImage[question.id] && (
-              <span className="answer-status warning">กรุณาส่งรูปวิธีทำในแชทด้านขวา</span>
+            {awaitingExplanationHelp[question.id] && (
+              <span className="answer-status warning">พิมพ์ในแชทว่าไม่เข้าใจตรงไหน</span>
             )}
           </div>
         )}
 
-        {isRevealed && (
+        {isRevealed && !isSplitMode && (
           <div className={`answer-feedback ${isCorrect ? 'correct' : 'incorrect'}`}>
             <div className="answer-feedback-title">
               {!hasCorrect ? 'ℹ️ ยังไม่มีเฉลย' : (isCorrect ? '✅ ถูกต้อง' : '❌ ไม่ถูกต้อง')}

@@ -2,12 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 const DUPLICATE_EMAIL_MESSAGE = 'อีเมลนี้ถูกใช้สมัครบัญชีแล้ว';
+const DUPLICATE_USERNAME_MESSAGE = 'ชื่อผู้ใช้นี้ถูกใช้แล้ว';
 
 const isDuplicateEmailError = (message = '') => {
   const normalized = String(message || '').toLowerCase();
   return normalized.includes('email already exists')
     || normalized.includes('already registered')
-    || normalized.includes('อีเมลนี้ถูกใช้สมัครบัญชีแล้ว');
+    || normalized.includes(DUPLICATE_EMAIL_MESSAGE);
+};
+
+const isDuplicateUsernameError = (message = '') => {
+  const normalized = String(message || '').toLowerCase();
+  return normalized.includes('username already exists')
+    || normalized.includes(DUPLICATE_USERNAME_MESSAGE);
 };
 
 const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
@@ -101,6 +108,11 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
         ...prev,
         email: DUPLICATE_EMAIL_MESSAGE,
       }));
+    } else if (isDuplicateUsernameError(result.error)) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        username: DUPLICATE_USERNAME_MESSAGE,
+      }));
     }
   };
 
@@ -131,7 +143,10 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
   }
 
   const emailErrorId = fieldErrors.email ? 'register-email-error' : undefined;
-  const generalError = isDuplicateEmailError(error) ? '' : (error || formError);
+  const usernameErrorId = fieldErrors.username ? 'register-username-error' : undefined;
+  const generalError = isDuplicateEmailError(error) || isDuplicateUsernameError(error)
+    ? ''
+    : (error || formError);
 
   return (
     <div className="auth-form register-auth-form">
@@ -228,8 +243,15 @@ const RegisterForm = ({ onSwitchToLogin = () => {} }) => {
               disabled={isLoading}
               minLength={3}
               autoComplete="username"
+              aria-invalid={Boolean(fieldErrors.username)}
+              aria-describedby={usernameErrorId}
             />
           </div>
+          {fieldErrors.username && (
+            <p className="field-error" id={usernameErrorId} role="alert">
+              {fieldErrors.username}
+            </p>
+          )}
         </div>
 
         <div className="form-group">
