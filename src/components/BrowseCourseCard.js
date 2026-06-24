@@ -121,13 +121,11 @@ const BrowseCourseCard = ({
           <p className="course-card-desc">{description}</p>
         </div>
         <div className="course-card-meta">
-          {isHighlighted ? <span className="course-highlight-badge">แนะนำสำหรับคุณ</span> : null}
           {rating ? <span className="browse-course-rating">★ {rating.toFixed(1)}</span> : null}
         </div>
       </div>
       <div className="course-badges">
         <span className="browse-badge subject">{subject}</span>
-        <span className="browse-badge grade">{grade}</span>
       </div>
       <div className="course-stats">
         <div>
@@ -161,19 +159,21 @@ const BrowseCourseCard = ({
           >
             ดูรายละเอียด
           </Link>
-          <button
-            type="button"
-            className={`browse-action secondary ${canStart ? '' : 'disabled'}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (canStart) handleOpen(true);
-            }}
-            disabled={!canStart}
-            aria-disabled={!canStart}
-            title={canStart ? 'เริ่มเรียนทันที' : 'ซื้อคอร์สก่อนเพื่อเริ่มเรียน'}
-          >
-            เริ่มเรียน
-          </button>
+          {!canRequestTrial ? (
+            <button
+              type="button"
+              className={`browse-action secondary ${canStart ? '' : 'disabled'}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (canStart) handleOpen(true);
+              }}
+              disabled={!canStart}
+              aria-disabled={!canStart}
+              title={canStart ? 'เริ่มเรียนทันที' : 'ซื้อคอร์สก่อนเพื่อเริ่มเรียน'}
+            >
+              เริ่มเรียน
+            </button>
+          ) : null}
           {canRequestTrial ? (
             <button
               type="button"

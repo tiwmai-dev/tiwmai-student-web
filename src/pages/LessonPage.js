@@ -606,14 +606,6 @@ const LessonPage = ({ user }) => {
     return 'hard';
   };
 
-  const getPurpose = (quiz) => {
-    if (quiz?.purpose) return quiz.purpose;
-    const title = (quiz?.title || '').toLowerCase();
-    if (title.includes('สอบเข้า') || title.includes('mock')) return 'ฝึกโจทย์สอบเข้า';
-    if (title.includes('ทบทวน')) return 'ทบทวน';
-    return 'ฝึกข้อสอบ';
-  };
-
   const clampPercent = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
@@ -649,10 +641,7 @@ const LessonPage = ({ user }) => {
 
     if (isRecommended) {
       badges.push({ key: 'recommended', label: 'แนะนำ', tone: 'recommended' });
-    }
-    if ((stats.attempts || 0) === 0) {
-      badges.push({ key: 'new', label: 'ยังไม่เคยทำ', tone: 'new' });
-    } else if (latestScore != null && latestScore < 70) {
+    } else if (latestScore != null && latestScore < 70 && (stats.attempts || 0) > 0) {
       badges.push({ key: 'review', label: 'ควรทบทวน', tone: 'review' });
     }
     return badges.slice(0, 2);
@@ -872,7 +861,6 @@ const LessonPage = ({ user }) => {
                     const attempts = stats.attempts || 0;
                     const latestScore = clampPercent(stats.latestScore);
                     const difficulty = getDifficulty(q.difficultyScore ?? q.difficulty);
-                    const purpose = getPurpose(q);
                     const questionCount = Number.isInteger(q?.total_questions)
                       ? q.total_questions
                       : (Array.isArray(q?.questions) ? q.questions.length : (Number.isInteger(q?.questions) ? q.questions : 0));
@@ -883,7 +871,6 @@ const LessonPage = ({ user }) => {
                         quiz={q}
                         attempts={attempts}
                         latestScore={latestScore}
-                        purpose={purpose}
                         difficulty={difficulty}
                         questionCount={questionCount}
                         statusBadges={getQuizStatusBadges(q, stats)}

@@ -1082,7 +1082,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
                 className="submit-nav-button top-card"
                 type="button"
               >
-                ส่งคำตอบ
+                ส่งแบบฝึกหัด
               </button>
             </div>
           </div>
