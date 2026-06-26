@@ -1,47 +1,54 @@
-const loadAnalytics = () => {
-  jest.resetModules();
-  process.env.REACT_APP_GA_MEASUREMENT_ID = 'G-TEST123';
-  process.env.REACT_APP_ENVIRONMENT = 'staging';
-  window.gtag = jest.fn();
-  window.sessionStorage.clear();
-  return require('./analytics');
-};
+jest.mock('posthog-js', () => ({
+  init: jest.fn(),
+  capture: jest.fn(),
+  identify: jest.fn(),
+  reset: jest.fn(),
+}));
 
-afterEach(() => {
-  delete process.env.REACT_APP_GA_MEASUREMENT_ID;
-  delete process.env.REACT_APP_ENVIRONMENT;
-  delete window.gtag;
-  window.sessionStorage.clear();
-});
+describe('analytics', () => {
+  let analytics;
+  let posthog;
 
-test('adds shared parameters and removes sensitive query parameters from page views', () => {
-  const { trackPageView } = loadAnalytics();
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.REACT_APP_POSTHOG_KEY = 'phc_test_key';
+    process.env.REACT_APP_ENVIRONMENT = 'staging';
+    window.sessionStorage.clear();
+    posthog = require('posthog-js');
+    analytics = require('./analytics');
+    analytics.initializeAnalytics();
+  });
 
-  trackPageView('/auth/callback?code=secret&view=payment');
+  afterEach(() => {
+    delete process.env.REACT_APP_POSTHOG_KEY;
+    delete process.env.REACT_APP_POSTHOG_HOST;
+    delete process.env.REACT_APP_ENVIRONMENT;
+    window.sessionStorage.clear();
+    jest.clearAllMocks();
+  });
 
-  expect(window.gtag).toHaveBeenCalledWith('event', 'page_view', expect.objectContaining({
-    app_type: 'student',
-    environment: 'staging',
-    page_path: '/auth/callback?view=payment',
-  }));
-});
+  test('adds shared parameters and removes sensitive query parameters from page views', () => {
+    analytics.trackPageView('/auth/callback?code=secret&view=payment');
 
-test('tracks a once-only event once per session', () => {
-  const { trackEventOnce } = loadAnalytics();
+    expect(posthog.capture).toHaveBeenCalledWith('page_view', expect.objectContaining({
+      app_type: 'student',
+      environment: 'staging',
+      page_path: '/auth/callback?view=payment',
+    }));
+  });
 
-  trackEventOnce('purchase', 'pi_123', { transaction_id: 'pi_123' });
-  trackEventOnce('purchase', 'pi_123', { transaction_id: 'pi_123' });
+  test('tracks a once-only event once per session', () => {
+    analytics.trackEventOnce('purchase', 'pi_123', { transaction_id: 'pi_123' });
+    analytics.trackEventOnce('purchase', 'pi_123', { transaction_id: 'pi_123' });
 
-  expect(window.gtag).toHaveBeenCalledTimes(1);
-});
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+  });
 
-test('updates user id without emitting an automatic page view', () => {
-  const { setAnalyticsUser } = loadAnalytics();
+  test('identifies users and resets when logged out', () => {
+    analytics.setAnalyticsUser('user-123');
+    analytics.setAnalyticsUser(null);
 
-  setAnalyticsUser('user-123');
-
-  expect(window.gtag).toHaveBeenCalledWith('config', 'G-TEST123', {
-    send_page_view: false,
-    user_id: 'user-123',
+    expect(posthog.identify).toHaveBeenCalledWith('user-123');
+    expect(posthog.reset).toHaveBeenCalledTimes(1);
   });
 });

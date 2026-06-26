@@ -1,15 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import ChatInterface from '../components/ChatInterface';
 import { useAuth } from '../contexts/AuthContext';
+import { trackEventOnce } from '../utils/analytics';
 
 const ChatTutorPage = ({ user }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const userIdRef = useRef(user?.user_id || user?.id || user?.studentId || 'anonymous');
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    trackEventOnce('ai_tutor_opened', userIdRef.current);
   }, []);
 
   const handleSelectTab = (tab) => {

@@ -34,7 +34,8 @@ Expected local `.env` shape:
 
 ```env
 REACT_APP_API_BASE_URL=http://localhost:8000/api/v1
-REACT_APP_GA_MEASUREMENT_ID=
+REACT_APP_POSTHOG_KEY=
+REACT_APP_POSTHOG_HOST=https://us.i.posthog.com
 REACT_APP_ENVIRONMENT=local
 ```
 
@@ -42,7 +43,8 @@ For production on Vercel:
 
 ```env
 REACT_APP_API_BASE_URL=https://your-api-domain.com/api/v1
-REACT_APP_GA_MEASUREMENT_ID=
+REACT_APP_POSTHOG_KEY=
+REACT_APP_POSTHOG_HOST=https://us.i.posthog.com
 REACT_APP_ENVIRONMENT=production
 ```
 
