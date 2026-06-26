@@ -348,7 +348,10 @@ export const AuthProvider = ({ children }) => {
 
         const fullUserData = await enrichUserData(data.access_token, data.user);
         setUser(fullUserData);
-        setAnalyticsUser(fullUserData?.user_id || fullUserData?.id || fullUserData?.studentId);
+        setAnalyticsUser(
+          fullUserData?.user_id || fullUserData?.id || fullUserData?.studentId,
+          { email: fullUserData?.email, name: fullUserData?.name }
+        );
         trackEvent('login', { method: 'password' });
         return { success: true, user: fullUserData };
       } else {
@@ -414,6 +417,7 @@ export const AuthProvider = ({ children }) => {
   const startOAuthLogin = async (provider = 'Google') => {
     setError(null);
     setIsLoading(true);
+    trackEvent('oauth_login_started', { provider });
     try {
       const response = await fetch(
         `${API_BASE_URL}/student/auth/oauth/authorize?provider=${encodeURIComponent(provider)}`
@@ -505,7 +509,10 @@ export const AuthProvider = ({ children }) => {
         const fullUserData = await enrichUserData(data.access_token, data.user);
         setUser(fullUserData);
         sessionStorage.removeItem('student_oauth_state');
-        setAnalyticsUser(fullUserData?.user_id || fullUserData?.id || fullUserData?.studentId);
+        setAnalyticsUser(
+          fullUserData?.user_id || fullUserData?.id || fullUserData?.studentId,
+          { email: fullUserData?.email, name: fullUserData?.name }
+        );
         trackEvent('login', { method: 'google' });
         return { success: true, user: fullUserData };
       }
@@ -572,7 +579,10 @@ export const AuthProvider = ({ children }) => {
       const fullUserData = await enrichUserData(sessionData.access_token, sessionData.user);
       setUser(fullUserData);
       sessionStorage.removeItem('student_oauth_state');
-      setAnalyticsUser(fullUserData?.user_id || fullUserData?.id || fullUserData?.studentId);
+      setAnalyticsUser(
+        fullUserData?.user_id || fullUserData?.id || fullUserData?.studentId,
+        { email: fullUserData?.email, name: fullUserData?.name }
+      );
       trackEvent('login', { method: 'google' });
       return { success: true, user: fullUserData };
     } catch (error) {
@@ -601,6 +611,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout request failed:', error);
     } finally {
       // Always clear local storage and state
+      trackEvent('logout');
       clearStoredAuth();
       setUser(null);
       setAnalyticsUser(null);
@@ -662,6 +673,11 @@ export const AuthProvider = ({ children }) => {
           avatar_url: data?.onboarding_profile?.avatar_url || prev.avatar_url,
           onboarding: createKnownOnboarding(data?.onboarding_completed !== false, data?.onboarding_profile || payload),
         };
+      });
+
+      trackEvent('onboarding_complete', {
+        nickname: data?.onboarding_profile?.nickname || payload?.nickname,
+        has_avatar: Boolean(data?.onboarding_profile?.avatar_url || payload?.avatar_url),
       });
 
       return { success: true };

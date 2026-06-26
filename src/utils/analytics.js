@@ -1,4 +1,7 @@
-const MEASUREMENT_ID = process.env.REACT_APP_GA_MEASUREMENT_ID?.trim();
+import posthog from 'posthog-js';
+
+const getPosthogKey = () => process.env.REACT_APP_POSTHOG_KEY?.trim();
+const getPosthogHost = () => process.env.REACT_APP_POSTHOG_HOST?.trim() || 'https://us.i.posthog.com';
 const APP_TYPE = 'student';
 const ENVIRONMENT = process.env.REACT_APP_ENVIRONMENT?.trim() || process.env.NODE_ENV || 'unknown';
 const SENSITIVE_QUERY_PARAMS = new Set([
@@ -14,11 +17,11 @@ const SENSITIVE_QUERY_PARAMS = new Set([
 ]);
 
 let previousPageLocation = '';
+let isInitialized = false;
 
 const canTrack = () => (
-  Boolean(MEASUREMENT_ID)
+  isInitialized
   && typeof window !== 'undefined'
-  && typeof window.gtag === 'function'
 );
 
 const compactParams = (params = {}) => Object.fromEntries(
@@ -40,25 +43,16 @@ const sanitizePath = (path = '/') => {
 };
 
 export const initializeAnalytics = () => {
-  if (!MEASUREMENT_ID || typeof window === 'undefined') return;
+  const posthogKey = getPosthogKey();
+  if (!posthogKey || typeof window === 'undefined') return;
 
-  window.dataLayer = window.dataLayer || [];
-  window.gtag = window.gtag || function gtag() {
-    window.dataLayer.push(arguments);
-  };
-
-  window.gtag('js', new Date());
-  window.gtag('config', MEASUREMENT_ID, {
-    send_page_view: false,
-    app_type: APP_TYPE,
-    environment: ENVIRONMENT,
-    debug_mode: ENVIRONMENT === 'staging',
+  posthog.init(posthogKey, {
+    api_host: getPosthogHost(),
+    capture_pageview: false,
+    person_profiles: 'identified_only',
+    autocapture: false,
   });
-
-  const script = document.createElement('script');
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(MEASUREMENT_ID)}`;
-  document.head.appendChild(script);
+  isInitialized = true;
 };
 
 export const trackPageView = (path) => {
@@ -78,7 +72,7 @@ export const trackPageView = (path) => {
 export const trackEvent = (eventName, params = {}) => {
   if (!canTrack() || !eventName) return;
 
-  window.gtag('event', eventName, compactParams({
+  posthog.capture(eventName, compactParams({
     ...params,
     app_type: APP_TYPE,
     environment: ENVIRONMENT,
@@ -87,7 +81,7 @@ export const trackEvent = (eventName, params = {}) => {
 
 export const trackEventOnce = (eventName, uniqueKey, params = {}) => {
   if (!uniqueKey || typeof window === 'undefined') return;
-  const storageKey = `ga4_event_once:${eventName}:${uniqueKey}`;
+  const storageKey = `analytics_event_once:${eventName}:${uniqueKey}`;
   try {
     if (window.sessionStorage.getItem(storageKey)) return;
     window.sessionStorage.setItem(storageKey, '1');
@@ -97,11 +91,14 @@ export const trackEventOnce = (eventName, uniqueKey, params = {}) => {
   trackEvent(eventName, params);
 };
 
-export const setAnalyticsUser = (userId) => {
+export const setAnalyticsUser = (userId, properties = {}) => {
   if (!canTrack()) return;
 
-  window.gtag('config', MEASUREMENT_ID, {
-    send_page_view: false,
-    user_id: userId ? String(userId) : null,
-  });
+  if (userId) {
+    const userProperties = compactParams(properties);
+    posthog.identify(String(userId), Object.keys(userProperties).length ? userProperties : undefined);
+    return;
+  }
+
+  posthog.reset();
 };

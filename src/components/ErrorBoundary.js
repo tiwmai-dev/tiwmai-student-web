@@ -1,4 +1,6 @@
 import React from 'react';
+import posthog from 'posthog-js';
+import { trackEvent } from '../utils/analytics';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -18,19 +20,17 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-    
+
     this.setState({
       error: error,
       errorInfo: errorInfo
     });
 
-    // Log error to external service if available
-    if (window.gtag) {
-      window.gtag('event', 'exception', {
-        description: error.toString(),
-        fatal: false
-      });
-    }
+    posthog.captureException(error, { extra: { componentStack: errorInfo?.componentStack } });
+    trackEvent('exception', {
+      description: error.toString(),
+      fatal: false,
+    });
   }
 
   handleRetry = () => {

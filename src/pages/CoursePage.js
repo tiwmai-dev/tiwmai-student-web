@@ -393,10 +393,6 @@ const CoursePage = ({ user }) => {
   }, [course, courseId]);
 
   const handleSelectHeaderTab = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'browse') {
       navigate('/dashboard', { state: { activeTab: 'browse' } });
       return;
@@ -757,6 +753,11 @@ const CoursePage = ({ user }) => {
     try {
       setTrialStarting(true);
       await secureAPI.courseAPI.enroll(userId, targetCourseId, { mode: 'trial' });
+      trackEvent('trial_start', {
+        course_id: targetCourseId,
+        course_name: course?.name || course?.title,
+        course_category: course?.category || course?.subject,
+      });
       setTrialStartDialog(null);
       navigate(`/course/${targetCourseId}`, { replace: true, state: { activeTab: 'lessons' } });
     } catch (e) {
