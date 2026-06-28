@@ -348,19 +348,7 @@ const CoursePage = ({ user }) => {
   const [trendDifficultyView, setTrendDifficultyView] = useState('easy');
   const [exerciseProgress, setExerciseProgress] = useState({ completed: 0, total: 0 });
   const [lessonExerciseProgress, setLessonExerciseProgress] = useState({});
-  const [analysisLlmSummary, setAnalysisLlmSummary] = useState({
-    loading: false,
-    error: null,
-    summaryParagraph: '',
-    recommendations: [],
-    recommendationCards: [],
-    model: '',
-    generatedAt: null,
-    isFallback: false,
-  });
-
   const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
-  const analysisSummaryRequestRef = useRef(0);
   const loadingTimeoutRef = useRef(null);
   const aiPracticeSetOpenedRef = useRef(null);
   const splitChatRef = useRef(null);
@@ -1317,7 +1305,6 @@ const CoursePage = ({ user }) => {
         .filter(Boolean)
     : filteredResults;
   const hasFilteredData = filteredResultsByTopic.length > 0;
-  const analysisScopeLabel = activeScope?.title || (analysisSourceType === 'mock_exam' ? 'แบบทดสอบที่เลือก' : 'บทเรียนที่เลือก');
   const calcStats = (list) => {
     const attempts = list.length;
     if (!attempts) return { attempts: 0, avg: 0, best: 0, lastAt: null, lastScore: 0 };
@@ -1985,22 +1972,6 @@ const CoursePage = ({ user }) => {
         })
         : '-',
     }));
-  const trendSeriesSummaryRows = trendEntries
-    .slice()
-    .sort((a, b) => a.ts - b.ts)
-    .slice(-10)
-    .map((entry, idx) => ({
-      ...entry,
-      attemptLabel: `ครั้งที่ ${idx + 1}`,
-      dateLabel: entry.ts
-        ? new Date(entry.ts).toLocaleDateString('th-TH', {
-          day: '2-digit',
-          month: '2-digit',
-          year: '2-digit',
-        })
-        : '-',
-    }));
-
   const trendChart = (() => {
     const width = 960;
     const height = 360;
@@ -2113,9 +2084,6 @@ const CoursePage = ({ user }) => {
   const mockOverallAreaPath = mockOverallPoints.length > 1
     ? `M ${mockOverallPoints[0].x} ${mockOverallChart.top + mockOverallChart.innerHeight} L ${mockOverallPolyline} L ${mockOverallPoints[mockOverallPoints.length - 1].x} ${mockOverallChart.top + mockOverallChart.innerHeight} Z`
     : '';
-  const weakestDifficulty = [...difficultyPerformance]
-    .filter((row) => row.attempts > 0)
-    .sort((a, b) => a.accuracy - b.accuracy)[0];
   const weakestMockTopic = mockTopicAccuracyRows.length > 0
     ? [...mockTopicAccuracyRows].sort((a, b) => a.accuracy - b.accuracy)[0]
     : null;
@@ -2123,284 +2091,6 @@ const CoursePage = ({ user }) => {
   const focusTopicMeta = weakestMockTopic
     ? `Accuracy ${weakestMockTopic.accuracy}% (${weakestMockTopic.correct}/${weakestMockTopic.total})`
     : 'รอผลการทำข้อสอบจำลองเพิ่ม';
-  const summaryTrendSourceRows = analysisSourceType === 'mock_exam' ? mockOverallAttemptRows : trendSeriesSummaryRows;
-  const recentTrendRows = summaryTrendSourceRows.slice(-5);
-  const scoreDeltaLatest = recentTrendRows.length >= 2
-    ? recentTrendRows[recentTrendRows.length - 1].score - recentTrendRows[recentTrendRows.length - 2].score
-    : 0;
-  const timeDeltaLatest = recentTrendRows.length >= 2
-    && Number.isFinite(Number(recentTrendRows[recentTrendRows.length - 1].sec))
-    && Number.isFinite(Number(recentTrendRows[recentTrendRows.length - 2].sec))
-    ? Number(recentTrendRows[recentTrendRows.length - 1].sec) - Number(recentTrendRows[recentTrendRows.length - 2].sec)
-    : null;
-  const aiProgressLabel = scoreDeltaLatest >= 5
-    ? 'พัฒนาการดีขึ้นชัดเจน'
-    : scoreDeltaLatest >= 1
-      ? 'พัฒนาการดีขึ้นเล็กน้อย'
-      : scoreDeltaLatest <= -5
-        ? 'คะแนนมีแนวโน้มลดลงชัดเจน'
-        : scoreDeltaLatest < 0
-        ? 'คะแนนมีแนวโน้มลดลงเล็กน้อย'
-          : 'คะแนนยังทรงตัว';
-  const AI_RECOMMENDATION_SECTIONS = [
-    { label: 'วิเคราะห์แนวโน้มคะแนน' },
-  ];
-  const stripAiRecommendationPrefix = (line) => {
-    let text = String(line || '').trim().replace(/^[•-]\s*/, '').trim();
-    AI_RECOMMENDATION_SECTIONS.forEach((section) => {
-      if (text.startsWith(section.label)) {
-        text = text.slice(section.label.length).trim().replace(/^[:：-]\s*/, '').trim();
-      }
-    });
-    return text;
-  };
-  const analysisSummaryPlan = AI_RECOMMENDATION_SECTIONS.map((section) => section.label);
-  const trendRowsForSummary = summaryTrendSourceRows
-    .slice(-6)
-    .map((row) => ({
-      attempt_label: row.attemptLabel,
-      date_label: row.dateLabel,
-      score_pct: row.score,
-    }));
-  const focusAreaSummary = analysisSourceType === 'mock_exam'
-    ? (weakestMockTopic
-      ? {
-        type: 'topic',
-        label: weakestMockTopic.topic,
-        accuracy_pct: weakestMockTopic.accuracy,
-        attempts_count: weakestMockTopic.total,
-        note: focusTopicMeta,
-      }
-      : {
-        type: 'topic',
-        label: null,
-        accuracy_pct: 0,
-        attempts_count: 0,
-        note: 'ยังไม่มีข้อมูล topic เพียงพอ',
-      })
-    : (weakestDifficulty
-      ? {
-        type: 'difficulty',
-        label: weakestDifficulty.label,
-        accuracy_pct: weakestDifficulty.accuracy,
-        attempts_count: weakestDifficulty.attempts,
-        note: `มั่นใจตรงจริง ${weakestDifficulty.confidenceMatchRate}%`,
-      }
-      : {
-        type: 'difficulty',
-        label: null,
-        accuracy_pct: 0,
-        attempts_count: 0,
-        note: 'ยังไม่มีข้อมูลระดับความยากเพียงพอ',
-      });
-  const prioritySampleRows = latestTopPriorityQuestions.slice(0, 10);
-  const priorityWrongQuestions = prioritySampleRows.filter((item) => item?.is_correct === false).length;
-  const priorityConfidentWrongQuestions = prioritySampleRows.filter((item) => item?.isConfidentWrong).length;
-  const prioritySlowQuestions = avgSecPerQuestion > 0
-    ? prioritySampleRows.filter((item) => Number(item?.sec_per_question) > avgSecPerQuestion).length
-    : 0;
-  const priorityAverageTimeSec = prioritySampleRows.length > 0
-    ? Math.round(
-      prioritySampleRows.reduce((sum, item) => sum + Math.max(0, Number(item?.sec_per_question) || 0), 0)
-      / prioritySampleRows.length
-    )
-    : 0;
-  const analysisSummaryPayload = hasFilteredData
-    ? {
-      analysis_plan: analysisSummaryPlan,
-      context: {
-        analysis_source_type: analysisSourceType,
-        scope_label: analysisScopeLabel,
-        topic_filter: analysisTopic !== 'all' ? analysisTopic : null,
-      },
-      metrics: {
-        attempts_total: summaryStats.attempts,
-        average_score_pct: summaryStats.avg,
-        latest_score_pct: summaryStats.lastScore,
-        accuracy_7d_pct: accuracy7d,
-        average_time_per_question_sec: avgSecPerQuestion,
-        confident_wrong_rate_pct: confidentWrongRate,
-      },
-      recent_trend: {
-        direction_label: aiProgressLabel,
-        score_delta_pct: scoreDeltaLatest,
-        time_delta_sec_per_question: Number.isFinite(timeDeltaLatest) ? timeDeltaLatest : null,
-        attempts: trendRowsForSummary,
-      },
-      focus_area: focusAreaSummary,
-      priority_patterns: {
-        sampled_questions: prioritySampleRows.length,
-        wrong_questions: priorityWrongQuestions,
-        confident_wrong_questions: priorityConfidentWrongQuestions,
-        slow_questions: prioritySlowQuestions,
-        average_time_sec: priorityAverageTimeSec,
-      },
-    }
-    : null;
-  const analysisSummarySignature = analysisSummaryPayload
-    ? JSON.stringify(analysisSummaryPayload)
-    : '';
-
-  useEffect(() => {
-    if (activeTab !== 'analysis' || !analysisSummaryPayload) {
-      setAnalysisLlmSummary((prev) => (
-        prev.loading
-        || prev.error
-        || prev.summaryParagraph
-        || prev.recommendations.length > 0
-        || prev.model
-        || prev.generatedAt
-        || prev.isFallback
-          ? {
-            loading: false,
-            error: null,
-            summaryParagraph: '',
-            recommendations: [],
-            recommendationCards: [],
-            model: '',
-            generatedAt: null,
-            isFallback: false,
-          }
-          : prev
-      ));
-      return;
-    }
-
-    let cancelled = false;
-    const requestId = analysisSummaryRequestRef.current + 1;
-    analysisSummaryRequestRef.current = requestId;
-
-    setAnalysisLlmSummary((prev) => ({
-      ...prev,
-      loading: true,
-      error: null,
-    }));
-
-    const loadLlmSummary = async () => {
-      try {
-        const currentUserId = getUserId();
-        const targetCourseId = (course?.id || course?.course_id || courseId || '').toString();
-        if (!currentUserId || !targetCourseId) {
-          throw new Error('MISSING_USER_OR_COURSE');
-        }
-
-        const response = await secureAPI.courseAPI.getStudentAnalysisSummary(
-          currentUserId,
-          targetCourseId,
-          analysisSummaryPayload,
-        );
-        if (cancelled || requestId !== analysisSummaryRequestRef.current) return;
-
-        const summaryParagraph = String(response?.summary_paragraph || '').trim();
-        const recommendations = Array.isArray(response?.recommendations)
-          ? response.recommendations
-              .map((item) => String(item || '').trim())
-              .filter(Boolean)
-              .slice(0, 3)
-          : [];
-        const recommendationCards = Array.isArray(response?.recommendation_cards)
-          ? response.recommendation_cards
-              .map((item) => {
-                if (!item || typeof item !== 'object') return null;
-                const title = String(item.title || '').trim();
-                const evidence = String(item.evidence || '').trim();
-                const action = String(item.action || '').trim();
-                const note = String(item.note || '').trim();
-                if (!title && !evidence && !action && !note) return null;
-                return { title, evidence, action, note };
-              })
-              .filter(Boolean)
-              .slice(0, 3)
-          : [];
-
-        setAnalysisLlmSummary({
-          loading: false,
-          error: null,
-          summaryParagraph,
-          recommendations,
-          recommendationCards,
-          model: String(response?.model || '').trim(),
-          generatedAt: response?.generated_at || null,
-          isFallback: Boolean(response?.is_fallback),
-        });
-      } catch (_) {
-        if (cancelled || requestId !== analysisSummaryRequestRef.current) return;
-        setAnalysisLlmSummary({
-          loading: false,
-          error: 'ไม่สามารถเชื่อมต่อ AI ได้ในขณะนี้',
-          summaryParagraph: '',
-          recommendations: [],
-          recommendationCards: [],
-          model: '',
-          generatedAt: null,
-          isFallback: true,
-        });
-      }
-    };
-
-    loadLlmSummary();
-
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    activeTab,
-    analysisSummarySignature,
-    course?.id,
-    course?.course_id,
-    courseId,
-    user?.id,
-    user?.studentId,
-    user?.username,
-    user?.user_id,
-  ]);
-
-  const analysisTargetAccuracy = Math.min(95, Math.max(70, accuracy7d > 0 ? accuracy7d + 10 : summaryStats.avg));
-  const analysisActionUnit = analysisSourceType === 'mock_exam' ? 'ข้อสอบจำลองอีก 1 ชุด' : 'แบบฝึกเพิ่มอีก 5-10 ข้อ';
-  const analysisEvidenceMetrics = [
-    { key: 'latest', label: 'ล่าสุด', value: `${summaryStats.lastScore}%` },
-    { key: 'average', label: 'เฉลี่ย', value: `${summaryStats.avg}%` },
-  ];
-  const fallbackAnalysisSummary = hasFilteredData
-    ? `จากข้อมูล ${summaryStats.attempts} ครั้งล่าสุด คะแนนเฉลี่ยอยู่ที่ ${summaryStats.avg}% คะแนนล่าสุด ${summaryStats.lastScore}% และ Accuracy 7 วัน ${accuracy7d}%`
-    : '';
-  const fallbackRecommendationCards = [
-    {
-      title: scoreDeltaLatest > 0
-        ? 'คะแนนล่าสุดเริ่มดีขึ้นจากรอบก่อน'
-        : (scoreDeltaLatest < 0 ? 'คะแนนล่าสุดแผ่วลงจากรอบก่อน' : 'คะแนนยังทรงตัว ต้องเก็บรอบเพิ่ม'),
-      evidence: `Accuracy 7 วัน ${accuracy7d}% | ล่าสุด ${summaryStats.lastScore}% | เฉลี่ย ${summaryStats.avg}%`,
-      action: summaryStats.attempts < 3
-        ? `ทำ${analysisActionUnit}เพิ่มอีก 2 รอบเพื่อให้แนวโน้มชัดขึ้น`
-        : (scoreDeltaLatest < 0
-          ? `ย้อนดูข้อที่ผิดจากรอบล่าสุด แล้วทำ${analysisActionUnit}ภายใน 1-2 วัน`
-          : `รักษาจังหวะและพยายามดัน Accuracy 7 วันให้เกิน ${analysisTargetAccuracy}%`),
-      note: stripAiRecommendationPrefix(analysisLlmSummary.recommendations[0] || ''),
-    },
-  ];
-  const aiRecommendationDisplayRows = AI_RECOMMENDATION_SECTIONS
-    .map((section, idx) => {
-      const remoteCard = analysisLlmSummary.recommendationCards[idx] || {};
-      const fallbackCard = fallbackRecommendationCards[idx] || {};
-      const title = String(remoteCard.title || fallbackCard.title || '').trim();
-      const evidence = String(remoteCard.evidence || fallbackCard.evidence || '').trim();
-      const action = String(remoteCard.action || fallbackCard.action || '').trim();
-      const note = String(remoteCard.note || fallbackCard.note || '').trim();
-      if (!title && !evidence && !action && !note) return null;
-      return {
-        key: section.label,
-        idx,
-        sectionLabel: section.label,
-        title,
-        evidence,
-        evidenceMetrics: analysisEvidenceMetrics,
-        action,
-        note,
-      };
-    })
-    .filter(Boolean);
-
   useEffect(() => {
     const loadExerciseProgress = async () => {
       const sourceLessons = Array.isArray(course?.lessons) ? course.lessons : [];
@@ -3447,73 +3137,6 @@ const CoursePage = ({ user }) => {
                           <small>มั่นใจแต่ผิด {confidentWrongRate}%</small>
                         </article>
                       ) : null}
-                    </section>
-
-                    <section className="analysis-card analysis-ai-summary-card">
-                      <div className="analysis-ai-head">
-                        <div className="analysis-card-header">
-                          <h3>แนะนำโดยผู้ช่วยอัจฉริยะ</h3>
-                        </div>
-                      </div>
-                      {analysisLlmSummary.loading ? (
-                        <div className="analysis-ai-loading-minimal" role="status" aria-live="polite" aria-label="AI กำลังวิเคราะห์">
-                          <span className="analysis-ai-loading-dot" />
-                          <span className="analysis-ai-loading-dot" />
-                          <span className="analysis-ai-loading-dot" />
-                        </div>
-                      ) : (
-                        <>
-                          {(analysisLlmSummary.summaryParagraph || fallbackAnalysisSummary) ? (
-                            <p className="analysis-ai-summary-text">
-                              {analysisLlmSummary.summaryParagraph || fallbackAnalysisSummary}
-                            </p>
-                          ) : null}
-                          {aiRecommendationDisplayRows.length > 0 ? (
-                            <div className="analysis-ai-summary-list">
-                              {aiRecommendationDisplayRows.map((item) => (
-                                <div className="analysis-ai-summary-item" key={`ai-summary-${item.key}`}>
-                                  <div className="analysis-ai-summary-kicker">
-                                    <span className="analysis-ai-dot" aria-hidden="true" />
-                                    <span>{item.sectionLabel}</span>
-                                  </div>
-                                  <div className="analysis-ai-summary-copy">
-                                    <strong>{item.title}</strong>
-                                    {Array.isArray(item.evidenceMetrics) && item.evidenceMetrics.length > 0 ? (
-                                      <div className="analysis-ai-summary-metric-group">
-                                        <p className="analysis-ai-summary-metric-label">
-                                          จากข้อมูลล่าสุด
-                                        </p>
-                                        <div className="analysis-ai-summary-metrics">
-                                          {item.evidenceMetrics.map((metric) => (
-                                            <div className="analysis-ai-summary-metric" key={`${item.key}-${metric.key}`}>
-                                              <span>{metric.label}</span>
-                                              <strong>{metric.value}</strong>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ) : item.evidence ? (
-                                      <p>
-                                        <b>ข้อมูลล่าสุด:</b> {item.evidence}
-                                      </p>
-                                    ) : null}
-                                    {item.action ? (
-                                      <p className="analysis-ai-summary-action">
-                                        <b>แนะนำให้ทำต่อ:</b> {item.action}
-                                      </p>
-                                    ) : null}
-                                    {item.note ? (
-                                      <p className="analysis-ai-summary-note">
-                                        {item.note}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </>
-                      )}
                     </section>
 
                     {analysisSourceType !== 'mock_exam' ? (

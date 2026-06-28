@@ -540,44 +540,6 @@ export const courseAPI = {
       console.error('Get quiz results failed:', error);
       throw error;
     }
-  },
-
-  /**
-   * Get mock-exam leaderboard for a course
-   */
-  getCourseMockExamLeaderboard: async (courseId, limit = 50) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/student/courses/${courseId}/mock-exam-leaderboard?limit=${limit}`, {
-        headers: getAuthHeaders(),
-      });
-
-      await handleApiError(response);
-      return await response.json();
-    } catch (error) {
-      console.error('Get course mock exam leaderboard failed:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Generate student analysis summary using backend LLM provider.
-   */
-  getStudentAnalysisSummary: async (userId, courseId, payload = {}) => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/student/users/${encodeURIComponent(userId)}/courses/${encodeURIComponent(courseId)}/analysis-summary`,
-        {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(payload || {}),
-        }
-      );
-      await handleApiError(response);
-      return await response.json();
-    } catch (error) {
-      console.error('Get student analysis summary failed:', error);
-      throw error;
-    }
   }
 };
 
@@ -732,12 +694,8 @@ export const secureAPI = {
     getUserQuizResults: (userId, options = {}) => apiWithTokenRefresh(() => courseAPI.getUserQuizResults(userId, options)),
     submitQuizAnswers: (userId, quizId, answers) => apiWithTokenRefresh(() => courseAPI.submitQuizAnswers(userId, quizId, answers)),
     getQuizResults: (userId, quizId) => apiWithTokenRefresh(() => courseAPI.getQuizResults(userId, quizId)),
-    getCourseMockExamLeaderboard: (courseId, limit = 50) =>
-      apiWithTokenRefresh(() => courseAPI.getCourseMockExamLeaderboard(courseId, limit)),
     recordLearningActivity: (userId, payload = {}) =>
-      apiWithTokenRefresh(() => courseAPI.recordLearningActivity(userId, payload)),
-    getStudentAnalysisSummary: (userId, courseId, payload = {}) =>
-      apiWithTokenRefresh(() => courseAPI.getStudentAnalysisSummary(userId, courseId, payload))
+      apiWithTokenRefresh(() => courseAPI.recordLearningActivity(userId, payload))
   },
   chatAPI: {
     sendMessage: (message, userId, courseId, conversationId, questionContext, imageFile, chatMode) =>

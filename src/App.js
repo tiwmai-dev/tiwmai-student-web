@@ -5,7 +5,6 @@ import AuthCallbackPage from './pages/AuthCallbackPage';
 import HomePage from './pages/HomePage';
 import LegalPage from './pages/LegalPage';
 import DashboardPage from './pages/DashboardPage';
-import StudentRankingPage from './pages/StudentRankingPage';
 import CoursePage from './pages/CoursePage';
 import PaymentPage from './pages/PaymentPage';
 import PaymentHistoryPage from './pages/PaymentHistoryPage';
@@ -139,10 +138,7 @@ function AppContent() {
             path="/privacy"
             element={<LegalPage onShowAuth={handleShowAuth} documentType="privacy" />}
           />
-          <Route
-            path="/ranking"
-            element={renderProtected(<StudentRankingPage user={user} />, 'กำลังโหลดอันดับ...')}
-          />
+          <Route path="/ranking" element={<Navigate to="/dashboard" replace />} />
           <Route
             path="/payment-history"
             element={renderProtected(<PaymentHistoryPage user={user} />, 'กำลังโหลดประวัติการชำระเงิน...')}

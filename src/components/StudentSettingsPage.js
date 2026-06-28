@@ -134,10 +134,14 @@ const normalizeAiQuotaStatus = (payload) => {
     ? (remaining / dailyLimit) * 100
     : asNumber(payload.remaining_percent, 0);
   const remainingPercent = Math.max(0, Math.min(100, asNumber(payload.remaining_percent, percent)));
+  const usedPercent = Math.max(
+    0,
+    Math.min(100, asNumber(payload.used_percent, dailyLimit > 0 ? (used / dailyLimit) * 100 : 100 - remainingPercent)),
+  );
   return {
     userId: String(payload.user_id || '').trim() || null,
     remainingPercent,
-    usedPercent: Math.max(0, Math.min(100, 100 - remainingPercent)),
+    usedPercent,
     isExhausted: Boolean(payload.is_exhausted),
     requestCount: Math.max(0, Math.round(asNumber(payload.request_count, 0))),
     usageDate: String(payload.usage_date || '').trim(),
@@ -797,8 +801,8 @@ const StudentSettingsPage = ({ user }) => {
   };
 
   const renderAiQuotaSection = () => {
-    const remainingPercent = Math.max(0, Math.min(100, Number(aiQuota?.remainingPercent ?? 100)));
-    const isExhausted = Boolean(aiQuota?.isExhausted);
+    const usedPercent = Math.max(0, Math.min(100, Number(aiQuota?.usedPercent ?? 0)));
+    const isExhausted = Boolean(aiQuota?.isExhausted) || usedPercent >= 100;
     const limitSourceLabel = aiQuota?.limitSource === 'user_override'
       ? 'กำหนดเฉพาะบัญชี'
       : 'ค่าเริ่มต้นของระบบ';
@@ -810,31 +814,36 @@ const StudentSettingsPage = ({ user }) => {
 
         <section className="settings-form-section ai-quota-section">
           <div className={`ai-quota-overview ${isExhausted ? 'exhausted' : ''}`}>
-            <div className="ai-quota-main">
+            <div className="ai-quota-overview-head">
               <span className="ai-quota-kicker">สถานะการใช้งานวันนี้</span>
-              <strong>{aiQuotaLoading ? 'กำลังโหลด...' : `${Math.round(remainingPercent)}%`}</strong>
-              <p>{isExhausted ? 'โควตาวันนี้หมดแล้ว' : 'โควตา AI ที่เหลือสำหรับวันนี้'}</p>
+              <span className={`ai-quota-status-badge ${isExhausted ? 'exhausted' : 'ready'}`}>
+                {isExhausted ? 'หมดแล้ว' : 'พร้อมใช้งาน'}
+              </span>
             </div>
-            <div className="ai-quota-meter" aria-label={`เหลือ ${Math.round(remainingPercent)} เปอร์เซ็นต์`}>
+            <strong className="ai-quota-value">
+              {aiQuotaLoading ? 'กำลังโหลด...' : `${Math.round(usedPercent)}%`}
+            </strong>
+            <p className="ai-quota-caption">
+              {isExhausted ? 'ใช้โควตาครบแล้ววันนี้' : 'ใช้โควตา AI ไปแล้ววันนี้'}
+            </p>
+            <div className="ai-quota-meter" aria-label={`ใช้โควตาไปแล้ว ${Math.round(usedPercent)} เปอร์เซ็นต์`}>
               <div
                 className="ai-quota-meter-track"
-                style={{ '--ai-quota-fill': `${remainingPercent}%` }}
-              />
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(usedPercent)}
+              >
+                <span style={{ width: `${usedPercent}%` }} />
+              </div>
               <div className="ai-quota-meter-labels">
-                <span>เหลือ {Math.round(remainingPercent)}%</span>
+                <span>0%</span>
+                <span>100%</span>
               </div>
             </div>
           </div>
 
           <div className="settings-info-grid ai-quota-info-grid">
-            <div className="settings-info-card">
-              <span>สถานะ</span>
-              <strong>{isExhausted ? 'หมดแล้ว' : 'พร้อมใช้งาน'}</strong>
-            </div>
-            <div className="settings-info-card">
-              <span>โควตาคงเหลือ</span>
-              <strong>{Math.round(remainingPercent)}%</strong>
-            </div>
             <div className="settings-info-card">
               <span>จำนวนคำขอวันนี้</span>
               <strong>{aiQuota?.requestCount ?? 0} ครั้ง</strong>

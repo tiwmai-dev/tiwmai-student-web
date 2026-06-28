@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Cpu, ShieldCheck, TrendingUp } from 'lucide-react';
+import { BarChart3, ChevronLeft, ChevronRight, Cpu, ShieldCheck, TrendingUp } from 'lucide-react';
 import Header from '../components/Header';
 import CourseCard from '../components/BrowseCourseCard';
 import aiCardMascotImage from '../assets/images/illustrations/ai-analysis-mascot.webp';
@@ -185,6 +185,10 @@ const HomePage = ({ onShowAuth }) => {
   const [landingCourses, setLandingCourses] = React.useState([]);
   const [coursesLoading, setCoursesLoading] = React.useState(true);
   const [coursesError, setCoursesError] = React.useState('');
+  const [landingCoursesPage, setLandingCoursesPage] = React.useState(0);
+  const [landingCoursesVisibleCount, setLandingCoursesVisibleCount] = React.useState(4);
+  const [landingCoursesNeedNav, setLandingCoursesNeedNav] = React.useState(false);
+  const landingCoursesScrollRef = React.useRef(null);
 
   React.useEffect(() => {
     const slideInterval = window.setInterval(() => {
@@ -229,10 +233,68 @@ const HomePage = ({ onShowAuth }) => {
   }, []);
 
   const visibleLandingCourses = React.useMemo(() => (
-    landingCourses
-      .filter((course) => courseMatchesLandingTab(course, activeCourseTab))
-      .slice(0, 4)
+    landingCourses.filter((course) => courseMatchesLandingTab(course, activeCourseTab))
   ), [activeCourseTab, landingCourses]);
+
+  const landingCoursesMaxPage = Math.max(0, visibleLandingCourses.length - landingCoursesVisibleCount);
+
+  const scrollLandingCourses = React.useCallback((direction) => {
+    setLandingCoursesPage((prev) => Math.min(
+      Math.max(0, visibleLandingCourses.length - landingCoursesVisibleCount),
+      Math.max(0, prev + direction),
+    ));
+  }, [visibleLandingCourses.length, landingCoursesVisibleCount]);
+
+  React.useEffect(() => {
+    setLandingCoursesPage(0);
+  }, [activeCourseTab, visibleLandingCourses.length]);
+
+  React.useEffect(() => {
+    setLandingCoursesPage((prev) => Math.min(prev, landingCoursesMaxPage));
+  }, [landingCoursesMaxPage]);
+
+  React.useEffect(() => {
+    const el = landingCoursesScrollRef.current;
+    if (!el) return undefined;
+
+    const updateVisibleCount = () => {
+      const cards = el.querySelectorAll('.course-card-new');
+      if (!cards.length) {
+        setLandingCoursesNeedNav(false);
+        return;
+      }
+      setLandingCoursesNeedNav(el.scrollWidth > el.clientWidth + 4);
+      const viewport = el.getBoundingClientRect();
+      let visible = 0;
+      cards.forEach((card) => {
+        const rect = card.getBoundingClientRect();
+        if (rect.right > viewport.left + 4 && rect.left < viewport.right - 4) {
+          visible += 1;
+        }
+      });
+      setLandingCoursesVisibleCount(Math.max(1, visible));
+    };
+
+    updateVisibleCount();
+    const ro = new ResizeObserver(updateVisibleCount);
+    ro.observe(el);
+    window.addEventListener('resize', updateVisibleCount);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateVisibleCount);
+    };
+  }, [visibleLandingCourses.length, coursesLoading]);
+
+  React.useEffect(() => {
+    if (coursesLoading) return;
+    const el = landingCoursesScrollRef.current;
+    if (!el) return;
+    const card = el.querySelector('.course-card-new');
+    if (!card) return;
+    const gap = Number.parseFloat(getComputedStyle(el).gap) || 16;
+    const step = card.getBoundingClientRect().width + gap;
+    el.scrollTo({ left: landingCoursesPage * step, behavior: 'smooth' });
+  }, [landingCoursesPage, visibleLandingCourses.length, coursesLoading]);
 
   const heroFeatures = [
     { iconSrc: heroAiWeaknessImage, title: 'AI ผู้ช่วยตะลุยโจทย์' },
@@ -473,17 +535,47 @@ const HomePage = ({ onShowAuth }) => {
           ) : coursesError ? (
             <div className="landing-course-status error" role="alert">{coursesError}</div>
           ) : visibleLandingCourses.length > 0 ? (
-            <div className="landing-course-grid browse-section">
-              {visibleLandingCourses.map((course, index) => (
-                <CourseCard
-                  key={course.id}
-                  course={course}
-                  highlight={index === 0}
-                  requiresAuth
-                  onRequireAuth={handleAuth}
-                  showTrialAction={false}
-                />
-              ))}
+            <div className={`landing-course-carousel${landingCoursesNeedNav ? '' : ' landing-course-carousel--static'}`}>
+              {!coursesLoading && landingCoursesNeedNav ? (
+                <>
+                  <button
+                    type="button"
+                    className="landing-course-nav-btn landing-course-nav-btn--prev"
+                    onClick={() => scrollLandingCourses(-1)}
+                    disabled={landingCoursesPage <= 0}
+                    aria-label="เลื่อนไปคอร์สก่อนหน้า"
+                  >
+                    <ChevronLeft size={22} strokeWidth={2.4} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="landing-course-nav-btn landing-course-nav-btn--next"
+                    onClick={() => scrollLandingCourses(1)}
+                    disabled={landingCoursesPage >= landingCoursesMaxPage}
+                    aria-label="เลื่อนไปคอร์สถัดไป"
+                  >
+                    <ChevronRight size={22} strokeWidth={2.4} aria-hidden="true" />
+                  </button>
+                </>
+              ) : null}
+              <div className="landing-course-viewport">
+                <div
+                  ref={landingCoursesScrollRef}
+                  className="landing-course-scroll"
+                  aria-label="รายการคอร์สเรียนยอดนิยม"
+                >
+                  {visibleLandingCourses.map((course, index) => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      highlight={index === 0}
+                      requiresAuth
+                      onRequireAuth={handleAuth}
+                      showTrialAction={false}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="landing-course-status">ยังไม่มีคอร์สในหมวดนี้</div>

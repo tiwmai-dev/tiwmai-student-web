@@ -66,10 +66,6 @@ const QuizAnalysisPage = ({ user, initialTab = 'analysis' }) => {
   const [activeResultId, setActiveResultId] = useState(null);
 
   const handleSelectHeaderTab = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'browse') {
       navigate('/dashboard', { state: { activeTab: 'browse' } });
       return;

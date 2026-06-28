@@ -146,10 +146,6 @@ const LessonPage = ({ user }) => {
   const lessonViewTrackedRef = useRef(null);
 
   const handleSelectHeaderTab = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'my-courses') {
       navigate('/dashboard', { state: { activeTab: 'my-courses' } });
       return;

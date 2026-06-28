@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Gauge, Minus, TrendingDown, TrendingUp, Trophy } from 'lucide-react';
 import { readDailyEngagementMinutes } from '../utils/engagementTracking';
+import kpiQuestionsIcon from '../assets/images/icons/kpi-questions-icon.webp';
+import kpiSetsIcon from '../assets/images/icons/kpi-sets-icon.webp';
+import kpiAccuracyIcon from '../assets/images/icons/kpi-accuracy-icon.webp';
 
 const DEFAULT_TARGET_SCORE = 75;
 const TARGET_SCORE_STORAGE_KEY = 'student_course_target_score_v1';
@@ -129,6 +133,14 @@ const normalizeLessonRows = (courseRow) => {
       const blendedScore = Number.isFinite(lessonScore) && Number.isFinite(mockExamScore)
         ? Math.round((lessonScore + mockExamScore) / 2)
         : (Number.isFinite(lessonScore) ? lessonScore : mockExamScore);
+      const totalQuizzes = Math.max(0, Math.round(toNumber(lesson?.totalQuizzes)));
+      const completedQuizzes = Math.min(
+        totalQuizzes,
+        Math.max(0, Math.round(toNumber(lesson?.completedQuizzes)))
+      );
+      const progress = Number.isFinite(Number(lesson?.progress))
+        ? clampPercent(lesson.progress)
+        : (totalQuizzes > 0 ? clampPercent((completedQuizzes / totalQuizzes) * 100) : null);
       return {
         id: lesson?.id || `${courseRow.id}-lesson-${index + 1}`,
         name: String(lesson?.name || '').trim() || `บทเรียน ${index + 1}`,
@@ -137,6 +149,9 @@ const normalizeLessonRows = (courseRow) => {
         mockExamScore,
         score: Number.isFinite(blendedScore) ? clampPercent(blendedScore) : null,
         minutes: Math.max(0, Math.round(toNumber(lesson?.minutes))),
+        totalQuizzes,
+        completedQuizzes,
+        progress,
       };
     })
     .sort((a, b) => {
@@ -411,12 +426,12 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
     [overview.consistencySeries]
   );
 
-  const lessonScoreRows = useMemo(
+  const lessonAccuracyRows = useMemo(
     () => normalizeLessonRows(selectedCourseRow)
       .map((row) => ({
         id: row.id,
         label: row.name,
-        score: Number.isFinite(row.lessonScore) ? row.lessonScore : null,
+        score: row.score,
       })),
     [selectedCourseRow]
   );
@@ -441,7 +456,44 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
   const scoreDelta = scoreChart.points.length >= 2
     ? scoreChart.points[scoreChart.points.length - 1].value - scoreChart.points[scoreChart.points.length - 2].value
     : 0;
-  const peakTimeBar = timeChart.bars.find((bar) => bar.isPeak) || null;
+  const correctPercent = totalQuestions > 0 ? clampPercent((correctQuestions / totalQuestions) * 100) : 0;
+  const wrongPercent = totalQuestions > 0 ? clampPercent((wrongQuestions / totalQuestions) * 100) : 0;
+  const scoreTrendLabel = scoreDelta > 0 ? 'ดีขึ้น' : scoreDelta < 0 ? 'ลดลง' : 'คงที่';
+  const scoreTrendHint = scoreChart.points.length >= 2
+    ? (scoreDelta >= 0
+      ? `↑ สูงกว่าครั้งก่อน ${Math.abs(scoreDelta)}%`
+      : `↓ ต่ำกว่าครั้งก่อน ${Math.abs(scoreDelta)}%`)
+    : 'ยังไม่มีข้อมูลเปรียบเทียบ';
+  const scoreChartStats = {
+    latest: scoreChart.points.length
+      ? scoreChart.points[scoreChart.points.length - 1].value
+      : courseAverage,
+    highest: scoreChart.points.length
+      ? Math.max(...scoreChart.points.map((point) => point.value))
+      : courseAverage,
+    trend: scoreTrendLabel,
+  };
+  const timeChartStats = (() => {
+    const minutes = overview.consistencySeries.map((item) => item?.minutes || 0);
+    const activeMinutes = minutes.filter((value) => value > 0);
+    return {
+      average: minutes.length
+        ? Math.round(minutes.reduce((sum, value) => sum + value, 0) / minutes.length)
+        : 0,
+      max: activeMinutes.length ? Math.max(...activeMinutes) : 0,
+      min: activeMinutes.length ? Math.min(...activeMinutes) : 0,
+    };
+  })();
+  const accuracyHint = overallAccuracy >= 70
+    ? 'ความแม่นยำดีมาก รักษาไว้นะ'
+    : overallAccuracy >= 40
+      ? 'ทำมากกว่าจะแม่นยำได้อีกนะ'
+      : 'ลองทบทวนเนื้อหาแล้วทำแบบฝึกหัดเพิ่ม';
+  const goalEncouragement = goalGap <= 0
+    ? 'ยอดเยี่ยม! คุณถึงเป้าหมายแล้ว'
+    : goalGap <= 25
+      ? 'คุณใกล้ถึงเป้าหมายแล้ว! สู้ๆ อีกนิดเดียว'
+      : 'สู้ๆ อีกนิด ความเก่งจะตามมา!';
   const handleTargetScoreSave = () => {
     const nextTargetScore = clampTargetScore(targetScoreDraft);
     setTargetScore(nextTargetScore);
@@ -553,43 +605,60 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
         <article className="quick-status-card kpi-summary-card">
           <span>คะแนนเฉลี่ย</span>
           <div className="kpi-main-row">
-            <strong>{courseAverage}%</strong>
-            <div className="kpi-donut kpi-donut-green" style={{ '--value': courseAverage }}>
+            <div className="kpi-text-stack">
+              <strong>{courseAverage}%</strong>
+              <p className={`kpi-trend-line ${scoreDelta >= 0 ? 'up' : 'down'}`}>{scoreTrendHint}</p>
+              <p className="kpi-target-hint">เป้าหมาย: {targetScore}%</p>
+            </div>
+            <div className="kpi-donut kpi-donut-blue" style={{ '--value': courseAverage }}>
               <span>{courseAverage}%</span>
             </div>
           </div>
-          <p>{scoreDelta >= 0 ? 'แนวโน้มดีขึ้น' : 'แนวโน้มชะลอลง'} {scoreDelta >= 0 ? '+' : ''}{scoreDelta}%</p>
         </article>
 
-        <article className="quick-status-card kpi-summary-card">
+        <article className="quick-status-card kpi-summary-card kpi-card-with-icon">
           <span>ทำข้อสอบทั้งหมด</span>
-          <strong>{totalQuestions} ข้อ</strong>
-          <div className="kpi-sub-row">
-            <b className="good">ถูกต้อง {correctQuestions}</b>
-            <b className="bad">ผิด {wrongQuestions}</b>
-          </div>
-          <p>{completedQuizzes} จาก {totalQuizzes} ชุดที่มีคะแนน</p>
-        </article>
-
-        <article className="quick-status-card kpi-summary-card">
-          <span>ชุดที่ทำทั้งหมด</span>
-          <strong>{totalQuizzes} ชุด</strong>
-          <div className="kpi-sub-row">
-            <b className="good">เสร็จสิ้น {completedQuizzes}</b>
-            <b>ยังไม่เสร็จ {remainingQuizzes}</b>
-          </div>
-          <p>{selectedCourseRow?.subject || 'วิชาพื้นฐาน'}</p>
-        </article>
-
-        <article className="quick-status-card kpi-summary-card">
-          <span>ความแม่นยำโดยรวม</span>
           <div className="kpi-main-row">
-            <strong>{overallAccuracy}%</strong>
-            <div className="kpi-donut kpi-donut-blue" style={{ '--value': overallAccuracy }}>
-              <span>{overallAccuracy}%</span>
+            <div className="kpi-text-stack">
+              <strong>{totalQuestions} ข้อ</strong>
+              <div className="kpi-sub-row">
+                <b className="good">✓ ถูกต้อง {correctQuestions} ข้อ ({correctPercent}%)</b>
+                <b className="bad">✕ ผิด {wrongQuestions} ข้อ ({wrongPercent}%)</b>
+              </div>
+            </div>
+            <div className="kpi-card-icon" aria-hidden="true">
+              <img src={kpiQuestionsIcon} alt="" />
             </div>
           </div>
-          <p>คำนวณจากผลลัพธ์ที่มีข้อมูลล่าสุด</p>
+        </article>
+
+        <article className="quick-status-card kpi-summary-card kpi-card-with-icon">
+          <span>ชุดที่ทำทั้งหมด</span>
+          <div className="kpi-main-row">
+            <div className="kpi-text-stack">
+              <strong>{totalQuizzes} ชุด</strong>
+              <div className="kpi-sub-row">
+                <b className="good">✓ เสร็จสิ้น {completedQuizzes} ชุด</b>
+                <b className="pending">◷ ยังไม่เสร็จ {remainingQuizzes} ชุด</b>
+              </div>
+            </div>
+            <div className="kpi-card-icon" aria-hidden="true">
+              <img src={kpiSetsIcon} alt="" />
+            </div>
+          </div>
+        </article>
+
+        <article className="quick-status-card kpi-summary-card kpi-card-with-icon">
+          <span>ความแม่นยำโดยรวม</span>
+          <div className="kpi-main-row">
+            <div className="kpi-text-stack">
+              <strong>{overallAccuracy}%</strong>
+              <p>{accuracyHint}</p>
+            </div>
+            <div className="kpi-card-icon" aria-hidden="true">
+              <img src={kpiAccuracyIcon} alt="" />
+            </div>
+          </div>
         </article>
       </div>
 
@@ -693,12 +762,58 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
               ))}
             </svg>
           </div>
+          <div className="chart-stat-row" aria-label="สรุปกราฟพัฒนาการของคะแนน">
+            <div className="chart-stat-item">
+              <span className="chart-stat-icon average" aria-hidden="true">
+                <Gauge size={18} strokeWidth={2.2} />
+              </span>
+              <div>
+                <small>คะแนนเฉลี่ยล่าสุด</small>
+                <strong>{scoreChartStats.latest}%</strong>
+              </div>
+            </div>
+            <div className="chart-stat-item">
+              <span className="chart-stat-icon trophy" aria-hidden="true">
+                <Trophy size={18} strokeWidth={2.2} />
+              </span>
+              <div>
+                <small>คะแนนสูงสุด</small>
+                <strong>{scoreChartStats.highest}%</strong>
+              </div>
+            </div>
+            <div className="chart-stat-item">
+              <span
+                className={`chart-stat-icon trend ${scoreDelta > 0 ? 'up' : scoreDelta < 0 ? 'down' : 'flat'}`}
+                aria-hidden="true"
+              >
+                {scoreDelta > 0 ? (
+                  <TrendingUp size={18} strokeWidth={2.2} />
+                ) : scoreDelta < 0 ? (
+                  <TrendingDown size={18} strokeWidth={2.2} />
+                ) : (
+                  <Minus size={18} strokeWidth={2.2} />
+                )}
+              </span>
+              <div>
+                <small>แนวโน้ม</small>
+                <strong>{scoreChartStats.trend}</strong>
+              </div>
+            </div>
+          </div>
         </article>
 
         <article className="subject-chart-card">
-          <div className="subject-chart-head">
-            <h3>เวลาที่ใช้ต่อวัน (เฉลี่ย)</h3>
-            <p>ย้อนหลัง 10 วัน • ไฮไลต์วันที่ใช้เวลาสูงสุดและวันนี้</p>
+          <div className="subject-chart-head subject-chart-head-split">
+            <div>
+              <h3>เวลาที่ใช้ต่อวัน (เฉลี่ย)</h3>
+              <p>ย้อนหลัง 10 วัน • ไฮไลต์วันที่ใช้เวลาสูงสุดและวันนี้</p>
+            </div>
+            <label className="chart-unit-select">
+              <span>หน่วย:</span>
+              <select value="minutes" aria-label="หน่วยเวลา" disabled>
+                <option value="minutes">นาที</option>
+              </select>
+            </label>
           </div>
           <div className="consistency-trend-chart-wrap">
             <svg
@@ -759,9 +874,28 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
               ))}
             </svg>
           </div>
-          <div className="time-chart-meta">
-            <span>สูงสุด: {peakTimeBar ? `${peakTimeBar.minutes} นาที` : '0 นาที'}</span>
-            <span>ล่าสุด: {timeChart.latestBar ? `${timeChart.latestBar.minutes} นาที` : '0 นาที'}</span>
+          <div className="chart-stat-row" aria-label="สรุปกราฟเวลาใช้งาน">
+            <div className="chart-stat-item">
+              <span className="chart-stat-icon clock" aria-hidden="true">◷</span>
+              <div>
+                <small>เวลาเฉลี่ยต่อวัน</small>
+                <strong>{timeChartStats.average} นาที</strong>
+              </div>
+            </div>
+            <div className="chart-stat-item">
+              <span className="chart-stat-icon peak" aria-hidden="true">◎</span>
+              <div>
+                <small>เวลาสูงสุด</small>
+                <strong>{timeChartStats.max} นาที</strong>
+              </div>
+            </div>
+            <div className="chart-stat-item">
+              <span className="chart-stat-icon min" aria-hidden="true">◷</span>
+              <div>
+                <small>เวลาต่ำสุด</small>
+                <strong>{timeChartStats.min} นาที</strong>
+              </div>
+            </div>
           </div>
         </article>
       </div>
@@ -771,12 +905,23 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
           <div className="course-progress-head">
             <h3>ความแม่นยำรายบท</h3>
           </div>
-          {lessonScoreRows.length > 0 ? (
+          {lessonAccuracyRows.length > 0 ? (
             <div className="report-topic-list">
-              {lessonScoreRows.map((row) => (
-                <div className="report-topic-row" key={`lesson-score-${row.id}`}>
+              {lessonAccuracyRows.map((row) => (
+                <div className="report-topic-row" key={`lesson-accuracy-${row.id}`}>
                   <span>{row.label}</span>
-                  <div className="report-topic-track" aria-hidden="true">
+                  <div
+                    className="report-topic-track"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Number.isFinite(row.score) ? row.score : 0}
+                    aria-label={
+                      Number.isFinite(row.score)
+                        ? `${row.label} ความแม่นยำ ${row.score}%`
+                        : `${row.label} ยังไม่มีข้อมูลความแม่นยำ`
+                    }
+                  >
                     <i style={{ width: `${Number.isFinite(row.score) ? Math.max(4, row.score) : 0}%` }} />
                   </div>
                   <strong>{Number.isFinite(row.score) ? `${row.score}%` : '-'}</strong>
@@ -784,45 +929,48 @@ const SubjectOverviewPanel = ({ user, courses = [], onBrowseCourses, loading = f
               ))}
             </div>
           ) : (
-            <p className="report-empty-note">คอร์สนี้ยังไม่มีคะแนนแบบฝึกหัดรายบทเพียงพอสำหรับสรุปเปอร์เซ็นต์</p>
+            <p className="report-empty-note">คอร์สนี้ยังไม่มีข้อมูลความแม่นยำรายบท</p>
           )}
         </article>
 
-        <article className="course-progress-card">
+        <article className="course-progress-card goal-progress-card">
           <div className="course-progress-head goal-progress-head">
             <h3>เป้าหมายของคุณ</h3>
-            <label className="goal-score-control">
-              <span>คะแนนเป้าหมาย</span>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={targetScoreDraft}
-                onChange={(event) => setTargetScoreDraft(event.target.value)}
-                aria-label="ตั้งคะแนนเป้าหมาย"
-              />
-              <b>%</b>
-            </label>
-            <button type="button" className="goal-score-save" onClick={handleTargetScoreSave}>
-              Save
-            </button>
+            <div className="goal-head-controls">
+              <label className="goal-score-control">
+                <span>คะแนนเป้าหมาย</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={targetScoreDraft}
+                  onChange={(event) => setTargetScoreDraft(event.target.value)}
+                  aria-label="ตั้งคะแนนเป้าหมาย"
+                />
+                <b>%</b>
+              </label>
+              <button type="button" className="goal-score-save" onClick={handleTargetScoreSave}>
+                บันทึก
+              </button>
+            </div>
           </div>
           <p className="goal-target-text">ทำให้ได้ {targetScore}% ภายในสิ้นเดือน</p>
-          <div className="goal-progress-bar" aria-hidden="true">
-            <i style={{ width: `${Math.max(4, courseAverage)}%` }} />
+          <div className="goal-progress-body">
+            <strong className="goal-progress-value">{courseAverage}%</strong>
+            <div className="goal-progress-bar" aria-hidden="true">
+              <i style={{ width: `${Math.max(4, courseAverage)}%` }} />
+            </div>
           </div>
           <div className="goal-progress-meta">
-            <strong>{courseAverage}%</strong>
             <span>
               {goalGap > 0
                 ? `เหลืออีก ${goalGap}% เพื่อไปถึงเป้าหมาย`
                 : `เกินเป้าหมาย ${Math.abs(goalGap)}% แล้ว`}
             </span>
           </div>
-          <p className="report-empty-note">
-            {goalGap > 0
-              ? `แนะนำทำแบบฝึกเพิ่มอย่างน้อย ${Math.max(1, remainingQuizzes)} ชุด`
-              : 'รักษาความสม่ำเสมอเพื่อคงผลลัพธ์'}
+          <p className="goal-encourage">
+            <span aria-hidden="true">★</span>
+            {goalEncouragement}
           </p>
         </article>
       </div>
