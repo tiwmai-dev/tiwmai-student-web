@@ -71,10 +71,6 @@ const MockExamPage = ({ user }) => {
   const [courseName, setCourseName] = useState('');
 
   const handleSelectHeaderTab = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'browse') {
       navigate('/dashboard', { state: { activeTab: 'browse' } });
       return;

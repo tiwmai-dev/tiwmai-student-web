@@ -90,10 +90,6 @@ const PaymentHistoryPage = ({ user }) => {
   }, [userId]);
 
   const handleSelectTab = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'browse') {
       navigate('/dashboard', { state: { activeTab: 'browse' } });
       return;

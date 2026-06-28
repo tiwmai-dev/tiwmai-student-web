@@ -356,10 +356,6 @@ const PaymentPage = ({ user }) => {
   }, [course?.id]);
 
   const handleSelectHeaderTab = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'browse') {
       navigate('/dashboard', { state: { activeTab: 'browse' } });
       return;

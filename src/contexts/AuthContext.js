@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { setAnalyticsUser, trackEvent } from '../utils/analytics';
+import { setMonitoringUser } from '../utils/monitoring';
 import {
   clearStoredAuthTokens,
   getStoredAccessToken,
@@ -112,8 +113,13 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const analyticsUserId = user?.user_id || user?.id || user?.studentId || null;
-    setAnalyticsUser(analyticsUserId);
-  }, [user?.user_id, user?.id, user?.studentId]);
+    const userProperties = analyticsUserId
+      ? { email: user?.email, name: user?.name }
+      : {};
+
+    setAnalyticsUser(analyticsUserId, userProperties);
+    setMonitoringUser(analyticsUserId, userProperties);
+  }, [user?.user_id, user?.id, user?.studentId, user?.email, user?.name]);
 
   const clearStoredAuth = () => {
     clearStoredAuthTokens();

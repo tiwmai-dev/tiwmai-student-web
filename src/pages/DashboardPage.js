@@ -1,19 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Atom, CalendarDays, CheckCircle2, Filter, Heart, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Filter, Heart, Search, SlidersHorizontal } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
-import DashboardHeader from '../components/DashboardHeader';
-import StatsOrOnboarding from '../components/StatsOrOnboarding';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import SubjectOverviewPanel from '../components/SubjectOverviewPanel';
-import AIRecommendationPanel from '../components/AIRecommendationPanel';
 import StudentSettingsPage from '../components/StudentSettingsPage';
 import CourseCard from '../components/BrowseCourseCard';
 import defaultCourseCoverImage from '../assets/images/illustrations/dashboard_logo.webp';
+import heroMascotImage from '../assets/images/illustrations/hero-recommend-mascot.webp';
+import aiBadgeImage from '../assets/images/illustrations/ai_logo.webp';
+import fireIcon from '../assets/images/icons/fire_icon.webp';
 import { courseAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { readLatestLessonActivity } from '../utils/learningActivity';
+import { readDailyEngagementMinutes } from '../utils/engagementTracking';
 import { trackEvent } from '../utils/analytics';
+
+const HOME_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const normalizeText = (value) => (value || '').toString().toLowerCase().trim();
 const STUDENT_API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api/v1';
@@ -309,6 +312,16 @@ const isEmptyDuplicateEnrollment = (course, allCourses, liveCourseStats) => {
 };
 
 const WEEKDAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+
+const getSubjectEmoji = (subjectName) => {
+  const text = String(subjectName || '');
+  if (text.includes('อังกฤษ')) return '🔤';
+  if (text.includes('คณิต')) return '➗';
+  if (text.includes('วิทยาศาสตร์')) return '🧪';
+  if (text.includes('ไทย')) return '📖';
+  if (text.includes('สังคม')) return '🌏';
+  return '📘';
+};
 const DASHBOARD_TIME_ZONE = 'Asia/Bangkok';
 
 const formatDayKeyFromUtcDate = (date) => {
@@ -462,18 +475,6 @@ const normalizeLessonId = (value) => {
   return text || null;
 };
 
-const formatThaiDate = (date) => {
-  try {
-    return new Intl.DateTimeFormat('th-TH', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }).format(date);
-  } catch (_) {
-    return '';
-  }
-};
-
 const formatThaiShortDate = (date) => {
   try {
     return new Intl.DateTimeFormat('th-TH', {
@@ -483,6 +484,51 @@ const formatThaiShortDate = (date) => {
   } catch (_) {
     return '';
   }
+};
+
+const formatHomeMinutesText = (minutes) => {
+  const safe = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(safe / 60);
+  const remain = safe % 60;
+  if (hours > 0 && remain > 0) return `${hours} ชม. ${remain} นาที`;
+  if (hours > 0) return `${hours} ชม.`;
+  return `${remain} นาที`;
+};
+
+const buildPercentTrend = (current, previous) => {
+  if (current <= 0 && previous <= 0) {
+    return { text: 'ยังไม่มีข้อมูลเปรียบเทียบ', positive: true };
+  }
+  if (previous <= 0) {
+    return { text: 'เริ่มเก็บข้อมูลในสัปดาห์นี้', positive: true };
+  }
+  const delta = Math.round(((current - previous) / previous) * 100);
+  if (delta === 0) return { text: 'เท่าเดิมจากสัปดาห์ก่อน', positive: true };
+  return delta > 0
+    ? { text: `เพิ่มขึ้น ${delta}% จากสัปดาห์ก่อน`, positive: true }
+    : { text: `ลดลง ${Math.abs(delta)}% จากสัปดาห์ก่อน`, positive: false };
+};
+
+const buildScoreTrend = (current, previous) => {
+  if (current <= 0 && previous <= 0) {
+    return { text: 'ยังไม่มีข้อมูลเปรียบเทียบ', positive: true };
+  }
+  const delta = current - previous;
+  if (delta === 0) return { text: 'คงที่จากสัปดาห์ก่อน', positive: true };
+  return delta > 0
+    ? { text: `เพิ่มขึ้น ${delta}% ↗`, positive: true }
+    : { text: `ลดลง ${Math.abs(delta)}% ↘`, positive: false };
+};
+
+const buildMinutesTrend = (current, previous) => {
+  if (current <= 0 && previous <= 0) {
+    return { text: 'ยังไม่มีข้อมูลเปรียบเทียบ', positive: true };
+  }
+  const delta = current - previous;
+  if (delta === 0) return { text: 'เท่าเดิมจากสัปดาห์ก่อน', positive: true };
+  return delta > 0
+    ? { text: `เพิ่มขึ้น ${formatHomeMinutesText(delta)}`, positive: true }
+    : { text: `ลดลง ${formatHomeMinutesText(Math.abs(delta))}`, positive: false };
 };
 
 const normalizeTrendSeriesLabels = (series = []) => {
@@ -731,6 +777,103 @@ const DashboardDialogModal = ({ config, onConfirm, onClose }) => {
   );
 };
 
+const HomeDashboardSkeleton = () => (
+  <div className="home-dashboard-skeleton" role="status" aria-live="polite" aria-label="กำลังโหลดหน้าหลัก">
+    <section className="home-hero-grid" aria-hidden="true">
+      <div className="home-hero-recommend home-skeleton-hero-left">
+        <span className="home-skeleton-line w-44" />
+        <span className="home-skeleton-line w-72 h-lg" />
+        <span className="home-skeleton-line w-56" />
+        <span className="home-skeleton-line w-64" />
+        <div className="home-skeleton-progress-track" />
+        <span className="home-skeleton-line w-36" />
+        <span className="home-skeleton-mascot" />
+      </div>
+      <div className="home-hero-cta home-skeleton-hero-right">
+        <span className="home-skeleton-line w-58 h-md" />
+        <span className="home-skeleton-button primary" />
+        <div className="home-skeleton-streak">
+          <span className="home-skeleton-circle sm" />
+          <div className="home-skeleton-streak-copy">
+            <span className="home-skeleton-line w-40" />
+            <span className="home-skeleton-line w-56" />
+          </div>
+        </div>
+        <div className="home-skeleton-week">
+          {Array.from({ length: 7 }, (_, index) => (
+            <span key={`home-skeleton-day-${index}`} className="home-skeleton-day">
+              <span className="home-skeleton-circle xs" />
+              <span className="home-skeleton-line w-16" />
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section className="home-subjects-section" aria-hidden="true">
+      <div className="home-subjects-layout">
+        <div className="home-subjects-carousel">
+          <span className="home-skeleton-line w-44 h-md" />
+          <div className="home-subjects-scroll">
+            {Array.from({ length: 3 }, (_, index) => (
+              <article key={`home-subject-skeleton-${index}`} className="home-subject-card home-skeleton-subject-card">
+                <div className="home-skeleton-subject-top">
+                  <div className="home-skeleton-subject-title">
+                    <span className="home-skeleton-line w-52" />
+                    <span className="home-skeleton-line w-36" />
+                  </div>
+                  <span className="home-skeleton-square" />
+                </div>
+                <div className="home-skeleton-subject-progress">
+                  <span className="home-skeleton-circle md" />
+                  <span className="home-skeleton-line w-72" />
+                </div>
+                <span className="home-skeleton-button" />
+              </article>
+            ))}
+          </div>
+        </div>
+        <article className="home-ai-card home-skeleton-ai-card">
+          <div className="home-skeleton-ai-head">
+            <span className="home-skeleton-square sm" />
+            <span className="home-skeleton-line w-52" />
+          </div>
+          <span className="home-skeleton-line w-64" />
+          {Array.from({ length: 3 }, (_, index) => (
+            <span key={`home-ai-skeleton-row-${index}`} className="home-skeleton-ai-row" />
+          ))}
+          <span className="home-skeleton-button accent" />
+        </article>
+      </div>
+    </section>
+
+    <section className="home-progress-grid" aria-hidden="true">
+      <article className="home-overall-card home-skeleton-overall-card">
+        <div className="home-skeleton-card-head">
+          <span className="home-skeleton-line w-44 h-md" />
+          <span className="home-skeleton-line w-24 chip" />
+        </div>
+        <div className="home-skeleton-overall-stats">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={`home-overall-skeleton-${index}`} className="home-skeleton-stat-block">
+              <span className="home-skeleton-line w-40" />
+              <span className="home-skeleton-line w-28 h-lg" />
+              <span className="home-skeleton-line w-48" />
+            </div>
+          ))}
+        </div>
+      </article>
+      <article className="home-trend-card home-skeleton-trend-card">
+        <div className="home-skeleton-card-head">
+          <span className="home-skeleton-line w-44 h-md" />
+          <span className="home-skeleton-line w-36" />
+        </div>
+        <div className="home-skeleton-chart" />
+      </article>
+    </section>
+  </div>
+);
+
 const MyCoursesSkeleton = () => (
   <div className="my-courses-skeleton" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูลคอร์สของฉัน">
     <div className="my-course-card-grid my-course-card-grid-skeleton" aria-hidden="true">
@@ -779,25 +922,6 @@ const MyCoursesSkeleton = () => (
   </div>
 );
 
-const ContinueCourseSkeleton = () => (
-  <div className="dashboard-continue-card dashboard-continue-card-skeleton" role="status" aria-live="polite" aria-label="กำลังโหลดบทเรียนที่เรียนต่อ">
-    <div className="continue-course-icon continue-course-icon-skeleton" aria-hidden="true">
-      <span className="dashboard-skeleton-line continue-icon-line" />
-    </div>
-    <div className="continue-main continue-main-skeleton" aria-hidden="true">
-      <span className="dashboard-skeleton-line continue-label-line" />
-      <span className="dashboard-skeleton-line continue-title-line" />
-      <span className="dashboard-skeleton-line continue-subtitle-line" />
-      <div className="continue-progress-row continue-progress-row-skeleton">
-        <span className="dashboard-skeleton-line continue-badge-line" />
-        <span className="dashboard-skeleton-line continue-track-line" />
-        <span className="dashboard-skeleton-line continue-percent-line" />
-      </div>
-    </div>
-    <span className="dashboard-skeleton-line continue-action-line" aria-hidden="true" />
-  </div>
-);
-
 const DashboardPage = ({ user, onShowAuth }) => {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -805,7 +929,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(user ? 'courses' : 'browse');
   const [selectedMyCourseId, setSelectedMyCourseId] = useState(null);
-  const [selectedAiCourseId, setSelectedAiCourseId] = useState(null);
   const [allCourses, setAllCourses] = useState([]);
   const [loadingAll, setLoadingAll] = useState(false);
   const [enrolling, setEnrolling] = useState({});
@@ -821,8 +944,12 @@ const DashboardPage = ({ user, onShowAuth }) => {
   const [liveStatsResolved, setLiveStatsResolved] = useState(false);
   const searchInputRef = useRef(null);
   const dialogResolverRef = useRef(null);
+  const previousResolvedUserIdRef = useRef(null);
   const [dialogConfig, setDialogConfig] = useState(null);
   const [myCourseFocusImageLoadFailed, setMyCourseFocusImageLoadFailed] = useState(false);
+  const homeSubjectsScrollRef = useRef(null);
+  const [homeSubjectsPage, setHomeSubjectsPage] = useState(0);
+  const [homeSubjectsVisibleCount, setHomeSubjectsVisibleCount] = useState(3);
   // Ensure enrolledCourses is always an array
   const enrolledCourses = useMemo(
     () => (Array.isArray(enrolledCoursesState) ? enrolledCoursesState : []),
@@ -875,11 +1002,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
     return candidates[0] || null;
   }, [user?.user_id, user?.id, user?.studentId, user?.username]);
   const hasCourses = enrichedEnrolledCourses.length > 0;
-  const hasProgress = enrichedEnrolledCourses.some(
-    (course) => (course?.progress || 0) > 0 || (course?.completedQuizzes || 0) > 0
-  );
-  const isNewUser = !hasProgress;
-  const shouldLoadLiveStats = ['courses', 'my-courses', 'browse', 'analysis', 'ai-recommend'].includes(activeTab);
+  const shouldLoadLiveStats = ['courses', 'my-courses', 'browse', 'analysis'].includes(activeTab);
   const statsLoading = user != null && !liveStatsResolved;
   const handleRequireAuth = useCallback((mode = 'login') => {
     if (onShowAuth) {
@@ -1056,8 +1179,15 @@ const DashboardPage = ({ user, onShowAuth }) => {
   }, [closeDialog, dialogConfig]);
 
   useEffect(() => {
-    setEnrolledCoursesState(Array.isArray(user?.enrolledCourses) ? user.enrolledCourses : []);
-  }, [user?.user_id, user?.id, user?.studentId, user?.username, user?.enrolledCourses]);
+    const previousUserId = previousResolvedUserIdRef.current;
+    if (previousUserId === resolvedUserId) return;
+    previousResolvedUserIdRef.current = resolvedUserId;
+    if (!resolvedUserId || (previousUserId && previousUserId !== resolvedUserId)) {
+      setEnrolledCoursesState([]);
+      setLiveCourseStats({});
+      setLiveStatsResolved(false);
+    }
+  }, [resolvedUserId]);
 
   useEffect(() => {
     const userId = resolvedUserId;
@@ -1084,27 +1214,23 @@ const DashboardPage = ({ user, onShowAuth }) => {
           const summaryStats = summary?.course_stats && typeof summary.course_stats === 'object'
             ? summary.course_stats
             : {};
-          if (!cancelled) {
+          if (!cancelled && summaryCourses.length > 0) {
             setEnrolledCoursesState(summaryCourses);
             setLiveCourseStats(summaryStats);
             setLiveStatsResolved(true);
-          }
-          return;
-        } catch (summaryError) {
-          console.warn('Dashboard learning summary unavailable; falling back to legacy stats loading.', summaryError);
-          if (process.env.NODE_ENV === 'production') {
-            if (!cancelled) {
-              setLiveCourseStats({});
-              setLiveStatsResolved(true);
-            }
             return;
           }
+          if (!cancelled && summaryCourses.length === 0) {
+            console.warn('Dashboard learning summary returned no courses; falling back to enrolled-courses.');
+          }
+        } catch (summaryError) {
+          console.warn('Dashboard learning summary unavailable; falling back to legacy stats loading.', summaryError);
         }
 
         let fallbackCourses = [];
         try {
           const enrolledData = await courseAPI.getUserCourses(userId);
-          fallbackCourses = Array.isArray(enrolledData) ? enrolledData : [];
+          fallbackCourses = toArray(enrolledData, 'courses');
           if (!cancelled) {
             setEnrolledCoursesState(fallbackCourses);
           }
@@ -1455,19 +1581,37 @@ const DashboardPage = ({ user, onShowAuth }) => {
                 if (orderDiff !== 0) return orderDiff;
                 return String(a.name || '').localeCompare(String(b.name || ''), 'th');
               })
-              .map((lesson) => ({
-                id: lesson.id,
-                name: lesson.name,
-                scoreSplit: {
-                  lesson: lesson.lesson.total > 0
-                    ? Math.round((lesson.lesson.correct / lesson.lesson.total) * 100)
-                    : null,
-                  mockExam: lesson.mockExam.total > 0
-                    ? Math.round((lesson.mockExam.correct / lesson.mockExam.total) * 100)
-                    : null,
-                },
-                minutes: lesson.minutes > 0 ? Math.round(lesson.minutes) : 0,
-              }));
+              .map((lesson) => {
+                const lessonQuizIds = new Set();
+                Object.entries(entry.quizToLessonId || {}).forEach(([quizId, lessonId]) => {
+                  if (String(lessonId) !== String(lesson.id)) return;
+                  if (entry.allQuizKindById?.[quizId] === 'mock_exam') return;
+                  lessonQuizIds.add(String(quizId));
+                });
+                const totalLessonQuizzes = lessonQuizIds.size;
+                const completedLessonQuizzes = [...lessonQuizIds]
+                  .filter((quizId) => attemptedQuizIds.has(quizId)).length;
+                const lessonProgress = totalLessonQuizzes > 0
+                  ? Math.round((completedLessonQuizzes / totalLessonQuizzes) * 100)
+                  : null;
+
+                return {
+                  id: lesson.id,
+                  name: lesson.name,
+                  scoreSplit: {
+                    lesson: lesson.lesson.total > 0
+                      ? Math.round((lesson.lesson.correct / lesson.lesson.total) * 100)
+                      : null,
+                    mockExam: lesson.mockExam.total > 0
+                      ? Math.round((lesson.mockExam.correct / lesson.mockExam.total) * 100)
+                      : null,
+                  },
+                  minutes: lesson.minutes > 0 ? Math.round(lesson.minutes) : 0,
+                  totalQuizzes: totalLessonQuizzes,
+                  completedQuizzes: completedLessonQuizzes,
+                  progress: lessonProgress,
+                };
+              });
             const attemptRows = courseResults
               .map((item, index) => {
                 const attemptStats = getAttemptStats(item);
@@ -1677,7 +1821,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
       return;
     }
     if (requestedTab === 'ai-recommend') {
-      setActiveTab('ai-recommend');
+      setActiveTab('courses');
       navigate(location.pathname, { replace: true, state: {} });
       return;
     }
@@ -1734,27 +1878,8 @@ const DashboardPage = ({ user, onShowAuth }) => {
   };
 
   const nextCourse = getNextCourse();
-  const nextLessonTitle =
-    nextCourse?.nextLessonTitle ||
-    nextCourse?.next_lesson_title ||
-    nextCourse?.nextLesson ||
-    nextCourse?.next_lesson ||
-    'บทเรียนถัดไป';
   const nextCourseTitle = nextCourse?.name || nextCourse?.title || 'คอร์สเรียน';
-  const nextCourseSubject = String(nextCourse?.subject || nextCourse?.category || '').trim();
-  const nextCourseGrade = String(nextCourse?.grade || nextCourse?.target_profile || '').trim();
-  const continueTopLabel = [nextCourseGrade, nextCourseSubject].filter(Boolean).join(' ') || 'คอร์สที่กำลังเรียน';
-  const nextCourseCompletedLessons = Math.max(0, Math.round(Number(nextCourse?.completedLessons || 0)));
-  const nextCourseTotalLessons = Math.max(1, Math.round(Number(nextCourse?.totalLessons || 0)));
   const nextCourseProgressPercent = Math.max(0, Math.min(100, Math.round(Number(nextCourse?.progress || 0))));
-  const activeCourseLabel = hasCourses ? truncateText(nextCourseTitle, 24) : 'ยังไม่มีคอร์สที่ลงทะเบียน';
-
-  const heroHeadline = hasCourses
-    ? 'อีกนิดเดียว เก่งขึ้นแน่นอน!'
-    : 'เริ่มสร้างความมั่นใจจากคอร์สแรกของคุณ';
-  const heroMessage = hasCourses
-    ? 'ลองทำแบบฝึกหัดเพิ่มเติม เพื่อทบทวนความเข้าใจและเพิ่มคะแนน'
-    : 'เลือกวิชาที่อยากพัฒนาก่อน แล้วเริ่มได้ทันที';
 
   const stats = useMemo(() => {
     const minutesThisWeek = enrichedEnrolledCourses.reduce(
@@ -1874,17 +1999,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
       },
     };
   }, [enrichedEnrolledCourses, user]);
-  const statsUpdatedLabel = useMemo(() => {
-    try {
-      const timeLabel = new Intl.DateTimeFormat('th-TH', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(new Date());
-      return `อัปเดตล่าสุด วันนี้ ${timeLabel}`;
-    } catch (_) {
-      return 'อัปเดตล่าสุด วันนี้';
-    }
-  }, []);
 
   useEffect(() => {
     if (enrichedEnrolledCourses.length === 0) {
@@ -1898,19 +2012,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
     const defaultCourse = enrichedEnrolledCourses.find((course) => (course?.progress || 0) > 0) || enrichedEnrolledCourses[0];
     setSelectedMyCourseId(defaultCourse?.id || defaultCourse?.course_id || null);
   }, [enrichedEnrolledCourses, selectedMyCourseId]);
-
-  useEffect(() => {
-    if (enrichedEnrolledCourses.length === 0) {
-      setSelectedAiCourseId(null);
-      return;
-    }
-    const hasSelected = enrichedEnrolledCourses.some(
-      (course) => String(course?.id || course?.course_id) === String(selectedAiCourseId || '')
-    );
-    if (hasSelected) return;
-    const defaultCourse = enrichedEnrolledCourses.find((course) => (course?.progress || 0) > 0) || enrichedEnrolledCourses[0];
-    setSelectedAiCourseId(defaultCourse?.id || defaultCourse?.course_id || null);
-  }, [enrichedEnrolledCourses, selectedAiCourseId]);
 
   const handlePrimaryCTA = () => {
     trackEvent('click_primary_cta', { source: 'hero' });
@@ -1948,16 +2049,8 @@ const DashboardPage = ({ user, onShowAuth }) => {
       handleBrowseCourses();
       return;
     }
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
     if (tab === 'analysis') {
       setActiveTab('analysis');
-      return;
-    }
-    if (tab === 'ai-recommend') {
-      setActiveTab('ai-recommend');
       return;
     }
     if (tab === 'my-courses') {
@@ -1995,20 +2088,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
         ...(options?.practiceSet ? { practiceSet: options.practiceSet } : {}),
       },
     });
-  };
-
-  const handleOpenCourseTab = (course, tab = 'lessons') => {
-    const courseId = course?.id || course?.course_id;
-    if (!courseId) return;
-    if (!user) {
-      handleRequireAuth('login');
-      return;
-    }
-    if (tab === 'analysis') {
-      handleCourseAnalysis(course);
-      return;
-    }
-    navigate(`/course/${courseId}`, { state: { activeTab: tab } });
   };
 
   const enrolledCourseMap = useMemo(() => {
@@ -2206,7 +2285,288 @@ const DashboardPage = ({ user, onShowAuth }) => {
     return PURPOSE_OPTIONS.slice();
   }, []);
 
-  const todayLabel = useMemo(() => formatThaiDate(new Date()), []);
+  const homeSubjectCards = useMemo(() => {
+    const palette = ['green', 'blue', 'purple', 'orange'];
+    return enrichedEnrolledCourses.map((course, index) => {
+      const progress = Math.max(0, Math.min(100, Math.round(Number(course?.progress) || 0)));
+      const totalQuizzes = Math.max(0, Math.round(toNumber(course?.totalQuizzes, course?.total_quizzes, course?.quiz_count)));
+      const completedQuizzes = Math.min(
+        totalQuizzes || Infinity,
+        Math.max(0, Math.round(toNumber(course?.completedQuizzes, course?.completed_quizzes)))
+      );
+      const started = progress > 0 || completedQuizzes > 0;
+      const doneLabel = totalQuizzes > 0
+        ? `เรียนแล้ว ${completedQuizzes.toLocaleString('th-TH')} / ${totalQuizzes.toLocaleString('th-TH')} ชุด`
+        : 'ยังไม่ได้เริ่มเรียน';
+      const courseName = String(course?.name || course?.title || course?.course_name || '').trim() || 'คอร์สเรียน';
+      const subjectLabel = String(course?.subject || course?.category || '').trim();
+      const gradeLabel = String(course?.grade || '').trim();
+      return {
+        id: course?.id || course?.course_id || `home-subject-${index}`,
+        course,
+        courseName,
+        subjectLabel,
+        gradeLabel,
+        progress,
+        started,
+        doneLabel,
+        accent: palette[index % palette.length],
+      };
+    });
+  }, [enrichedEnrolledCourses]);
+
+  const homeSubjectsMaxPage = Math.max(0, homeSubjectCards.length - homeSubjectsVisibleCount);
+
+  const scrollHomeSubjects = useCallback((direction) => {
+    setHomeSubjectsPage((prev) => Math.min(
+      Math.max(0, homeSubjectCards.length - homeSubjectsVisibleCount),
+      Math.max(0, prev + direction),
+    ));
+  }, [homeSubjectCards.length, homeSubjectsVisibleCount]);
+
+  useEffect(() => {
+    setHomeSubjectsPage(0);
+  }, [homeSubjectCards.length]);
+
+  useEffect(() => {
+    setHomeSubjectsPage((prev) => Math.min(prev, homeSubjectsMaxPage));
+  }, [homeSubjectsMaxPage]);
+
+  useEffect(() => {
+    if (statsLoading) return undefined;
+    const el = homeSubjectsScrollRef.current;
+    if (!el) return undefined;
+
+    const updateVisibleCount = () => {
+      const cards = el.querySelectorAll('.home-subject-card');
+      if (!cards.length) return;
+      const viewport = el.getBoundingClientRect();
+      let visible = 0;
+      cards.forEach((card) => {
+        const rect = card.getBoundingClientRect();
+        if (rect.right > viewport.left + 4 && rect.left < viewport.right - 4) {
+          visible += 1;
+        }
+      });
+      setHomeSubjectsVisibleCount(Math.max(1, visible));
+    };
+
+    updateVisibleCount();
+    const ro = new ResizeObserver(updateVisibleCount);
+    ro.observe(el);
+    window.addEventListener('resize', updateVisibleCount);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateVisibleCount);
+    };
+  }, [homeSubjectCards.length, statsLoading]);
+
+  useEffect(() => {
+    if (statsLoading) return;
+    const el = homeSubjectsScrollRef.current;
+    if (!el) return;
+    const card = el.querySelector('.home-subject-card');
+    if (!card) return;
+    const gap = Number.parseFloat(getComputedStyle(el).gap) || 16;
+    const step = card.getBoundingClientRect().width + gap;
+    el.scrollTo({ left: homeSubjectsPage * step, behavior: 'smooth' });
+  }, [homeSubjectsPage, homeSubjectCards.length, statsLoading]);
+
+  const homeRecommendTopics = useMemo(() => {
+    const items = [];
+    enrichedEnrolledCourses.forEach((course) => {
+      const subjectName = String(course?.subject || course?.category || '').trim()
+        || course?.name || course?.title || 'วิชาทั่วไป';
+      const topics = Array.isArray(course?.topicRows) ? course.topicRows : [];
+      topics.forEach((topic) => {
+        const total = Math.max(0, Math.round(Number(topic?.total) || 0));
+        if (total < 1) return;
+        const name = String(topic?.topic || '').trim();
+        if (!name || name === 'ไม่ระบุหัวข้อ') return;
+        items.push({
+          id: topic?.id || `${course?.id}-${name}`,
+          topic: name,
+          subjectName,
+          accuracy: Math.max(0, Math.min(100, Math.round(Number(topic?.accuracy) || 0))),
+          total,
+        });
+      });
+    });
+    items.sort((a, b) => {
+      if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy;
+      return b.total - a.total;
+    });
+    return items.slice(0, 3);
+  }, [enrichedEnrolledCourses]);
+
+  const homeTrendSeries = useMemo(() => {
+    const attempts = enrichedEnrolledCourses
+      .flatMap((course) => (Array.isArray(course?.attemptRows) ? course.attemptRows : []))
+      .filter((row) => Number.isFinite(row?.score))
+      .map((row, index) => ({
+        ...row,
+        sortKey: Number(row?.submittedAtMs) > 0 ? Number(row.submittedAtMs) : index,
+      }))
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .slice(-7);
+    return normalizeTrendSeriesLabels(
+      attempts.map((row, index) => ({
+        value: Math.max(0, Math.min(100, Math.round(Number(row.score)))),
+        label: Number(row?.submittedAtMs) > 0
+          ? formatThaiShortDate(new Date(row.submittedAtMs))
+          : (row?.label || `ครั้งที่ ${index + 1}`),
+      }))
+    );
+  }, [enrichedEnrolledCourses]);
+
+  const homeTrendChart = useMemo(() => {
+    const width = 560;
+    const height = 180;
+    const padding = { top: 20, right: 22, bottom: 32, left: 46 };
+    const innerWidth = width - padding.left - padding.right;
+    const innerHeight = height - padding.top - padding.bottom;
+    const yTickValues = [0, 20, 40, 60, 80, 100];
+    const yForValue = (value) => {
+      const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+      return padding.top + innerHeight - ((safeValue / 100) * innerHeight);
+    };
+    const points = homeTrendSeries.map((item, index) => {
+      const ratio = homeTrendSeries.length <= 1 ? 0 : index / (homeTrendSeries.length - 1);
+      return { ...item, x: padding.left + (ratio * innerWidth), y: yForValue(item.value) };
+    });
+    const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+    const baseY = yForValue(0);
+    const areaPath = points.length
+      ? `${linePath} L ${points[points.length - 1].x} ${baseY} L ${points[0].x} ${baseY} Z`
+      : '';
+    return {
+      width,
+      height,
+      padding,
+      points,
+      linePath,
+      areaPath,
+      yTicks: yTickValues.map((value) => ({ value, y: yForValue(value) })),
+      latest: points[points.length - 1] || null,
+    };
+  }, [homeTrendSeries]);
+  const hasHomeTrendData = homeTrendSeries.length >= 2;
+
+  const homeOverallStats = useMemo(() => {
+    const nowMs = Date.now();
+    const weekStartMs = nowMs - HOME_WEEK_MS;
+    const prevWeekStartMs = nowMs - (HOME_WEEK_MS * 2);
+
+    const estimateWeeklyQuestions = (startMs, endMs) => enrichedEnrolledCourses.reduce((sum, course) => {
+      const weekAttempts = (Array.isArray(course?.attemptRows) ? course.attemptRows : [])
+        .filter((row) => {
+          const ts = Number(row?.submittedAtMs);
+          return Number.isFinite(ts) && ts >= startMs && ts < endMs;
+        });
+      const totalQuestions = Math.max(0, toNumber(course?.totalQuestions, course?.total_questions));
+      const totalQuizzes = Math.max(1, toNumber(course?.totalQuizzes, course?.total_quizzes, course?.quiz_count));
+      return sum + Math.round(weekAttempts.length * (totalQuestions / totalQuizzes));
+    }, 0);
+
+    const questionsThisWeek = estimateWeeklyQuestions(weekStartMs, nowMs);
+    const questionsLastWeek = estimateWeeklyQuestions(prevWeekStartMs, weekStartMs);
+    const questionsDone = enrichedEnrolledCourses.reduce(
+      (sum, course) => sum + Math.max(0, Math.round(toNumber(course?.completedQuestions, course?.completed_questions))),
+      0
+    );
+    const displayQuestions = questionsThisWeek > 0 ? questionsThisWeek : questionsDone;
+
+    const thisWeekAttempts = enrichedEnrolledCourses
+      .flatMap((course) => (Array.isArray(course?.attemptRows) ? course.attemptRows : []))
+      .filter((row) => {
+        const ts = Number(row?.submittedAtMs);
+        return Number.isFinite(row?.score) && Number.isFinite(ts) && ts >= weekStartMs;
+      });
+    const lastWeekAttempts = enrichedEnrolledCourses
+      .flatMap((course) => (Array.isArray(course?.attemptRows) ? course.attemptRows : []))
+      .filter((row) => {
+        const ts = Number(row?.submittedAtMs);
+        return Number.isFinite(row?.score) && Number.isFinite(ts) && ts >= prevWeekStartMs && ts < weekStartMs;
+      });
+    const avgFromAttempts = (rows) => (rows.length
+      ? Math.round(rows.reduce((sum, row) => sum + Number(row.score), 0) / rows.length)
+      : 0);
+
+    const scoreSamples = enrichedEnrolledCourses
+      .map((course) => Number(course?.averageScore))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const fallbackAvgScore = scoreSamples.length
+      ? Math.round(scoreSamples.reduce((sum, value) => sum + value, 0) / scoreSamples.length)
+      : Math.max(0, Math.min(100, Math.round(Number(stats.averageExerciseScore) || 0)));
+    const avgScoreThisWeek = avgFromAttempts(thisWeekAttempts);
+    const avgScoreLastWeek = avgFromAttempts(lastWeekAttempts);
+    const avgScore = avgScoreThisWeek > 0 ? avgScoreThisWeek : fallbackAvgScore;
+
+    const dailyMinutes = readDailyEngagementMinutes({ user, days: 14, nowMs });
+    const trackedMinutesThisWeek = dailyMinutes.slice(-7).reduce((sum, day) => sum + (day.minutes || 0), 0);
+    const trackedMinutesLastWeek = dailyMinutes.slice(0, 7).reduce((sum, day) => sum + (day.minutes || 0), 0);
+    const minutesThisWeek = Math.max(
+      trackedMinutesThisWeek,
+      Math.max(0, Math.round(Number(stats.minutesThisWeek) || 0)),
+    );
+
+    return {
+      questionsDone: displayQuestions,
+      questionsTrend: buildPercentTrend(displayQuestions, questionsLastWeek),
+      avgScore,
+      avgScoreTrend: buildScoreTrend(avgScore, avgScoreLastWeek || fallbackAvgScore),
+      minutesThisWeek,
+      minutesTrend: buildMinutesTrend(minutesThisWeek, trackedMinutesLastWeek),
+      completedQuizzes: Math.max(0, Math.round(Number(stats.completedQuizzes) || 0)),
+    };
+  }, [enrichedEnrolledCourses, stats, user]);
+
+  const homeStreakDays = Math.max(0, Math.round(Number(stats?.consistency?.streakDays) || 0));
+  const homeWeekActivity = Array.isArray(stats?.consistency?.weekActivity)
+    ? stats.consistency.weekActivity
+    : [];
+  const homeLatestLessonTitle = useMemo(() => {
+    if (!hasCourses || !nextCourse) {
+      return 'เลือกวิชาที่อยากพัฒนาเพื่อเริ่มเก็บคะแนน';
+    }
+
+    const nextCourseId = String(nextCourse?.id || nextCourse?.course_id || '').trim();
+    const stored = readLatestLessonActivity({ user });
+    const storedTitle = String(stored?.lessonTitle || '').trim();
+    if (storedTitle && String(stored?.courseId || '').trim() === nextCourseId) {
+      return storedTitle;
+    }
+
+    const lessonRows = Array.isArray(nextCourse?.lessonRows) ? nextCourse.lessonRows : [];
+    const startedLessons = lessonRows.filter(
+      (lesson) => Number(lesson?.completedQuizzes) > 0 || Number(lesson?.progress) > 0
+    );
+    const lastStarted = startedLessons[startedLessons.length - 1];
+    if (lastStarted?.name) {
+      return String(lastStarted.name).trim();
+    }
+
+    const firstLesson = lessonRows[0];
+    if (firstLesson?.name) {
+      return String(firstLesson.name).trim();
+    }
+
+    return 'เริ่มบทเรียนแรกของคอร์สนี้';
+  }, [hasCourses, nextCourse, user]);
+
+  const homeHeroQuestionProgressLabel = useMemo(() => {
+    if (!hasCourses || !nextCourse) {
+      return 'ยังไม่ได้เริ่มทำข้อ';
+    }
+    const questionsDone = Math.max(
+      0,
+      Math.round(toNumber(nextCourse?.totalQuestions, nextCourse?.total_questions))
+    );
+    if (questionsDone <= 0) {
+      return 'ยังไม่ได้เริ่มทำข้อ';
+    }
+    return `ทำไปแล้ว ${questionsDone.toLocaleString('th-TH')} ข้อ ทำอีกเพื่อเก็บคะแนนเพิ่ม`;
+  }, [hasCourses, nextCourse]);
 
   const handleOpenCourse = (courseId, startImmediately = false) => {
     if (!courseId) return;
@@ -2416,8 +2776,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
     };
   }, [selectedMyCourse]);
 
-  const isAiRecommendEmptyState = activeTab === 'ai-recommend' && !statsLoading && enrichedEnrolledCourses.length === 0;
-
   return (
     <div className="dashboard-page">
       <Header
@@ -2427,82 +2785,353 @@ const DashboardPage = ({ user, onShowAuth }) => {
         activeTab={user ? activeTab : undefined}
         onSelectTab={user ? handleSelectTab : undefined}
       />
-      
-      <main className={`dashboard-main ${activeTab === 'ai-recommend' ? 'ai-recommend-dashboard-main' : ''} ${isAiRecommendEmptyState ? 'ai-recommend-empty-dashboard-main' : ''}`}>
+
+      <main className="dashboard-main">
         <div className="dashboard-container">
           {user ? (
             <>
               {activeTab === 'courses' && (
                 <>
-                  <section className="dashboard-greeting-row">
+                  <section className="dashboard-greeting-row home-greeting">
                     <div>
                       <h1>สวัสดีครับ {displayName || 'ผู้ใช้'} 👋</h1>
-                      <p>วันนี้พร้อมเรียนรู้และพัฒนาตัวเองแล้วนะ!</p>
-                    </div>
-                    <div className="dashboard-date-pill">
-                      <CalendarDays size={18} strokeWidth={2.1} aria-hidden="true" />
-                      <span>{todayLabel}</span>
+                      {statsLoading ? (
+                        <span className="home-skeleton-line w-72 greeting-sub" aria-hidden="true" />
+                      ) : (
+                        <p>พร้อมลุยทำแบบฝึกหัดให้เก่งขึ้นไปอีกขั้น!</p>
+                      )}
                     </div>
                   </section>
 
-                  <DashboardHeader
-                    headline={heroHeadline}
-                    message={heroMessage}
-                    activeCourseLabel={activeCourseLabel}
-                    averageProgress={stats.averageProgress}
-                    completedQuizCount={stats.completedQuizzes}
-                    onStartNow={handlePrimaryCTA}
-                    loading={statsLoading}
-                  />
-                </>
-              )}
-
-              {/* Tab Content */}
-              {activeTab === 'courses' && (
-                <>
-                  <StatsOrOnboarding
-                    isNewUser={isNewUser}
-                    stats={stats}
-                    loading={statsLoading}
-                    updatedLabel={statsUpdatedLabel}
-                  />
-
-                  <section className="dashboard-continue-section">
-                    <h2>เรียนต่อจากเดิม</h2>
-                    {statsLoading ? (
-                      <ContinueCourseSkeleton />
-                    ) : nextCourse ? (
-                      <div className="dashboard-continue-card">
-                        <div className="continue-course-icon" aria-hidden="true">
-                          <Atom size={42} strokeWidth={2.1} />
+                  {statsLoading ? (
+                    <HomeDashboardSkeleton />
+                  ) : (
+                    <>
+                  <section className="home-hero-grid">
+                    <div className="home-hero-recommend">
+                      <span className="home-hero-kicker">วิชาที่แนะนำสำหรับวันนี้</span>
+                      <h2>{hasCourses ? nextCourseTitle : 'เลือกคอร์สเพื่อเริ่มเรียน'}</h2>
+                      {hasCourses ? (
+                        <div className="home-hero-latest">
+                          <span className="home-hero-latest-label">บทเรียนล่าสุดที่ทำ</span>
+                          <p className="home-hero-lesson">{homeLatestLessonTitle}</p>
                         </div>
-                        <div className="continue-main">
-                          <p className="continue-top-label">{continueTopLabel}</p>
-                          <h3>{nextLessonTitle || 'บทเรียนถัดไป'}</h3>
-                          <p className="continue-subtitle">{nextCourseTitle}</p>
-                          <div className="continue-progress-row">
-                            <div className="continue-progress-meta">
-                              <span className="continue-badge">กำลังเรียน</span>
-                              <p>กำลังทำ {Math.min(nextCourseCompletedLessons, nextCourseTotalLessons)} จาก {nextCourseTotalLessons} บท</p>
+                      ) : (
+                        <p className="home-hero-lesson home-hero-lesson-muted">{homeLatestLessonTitle}</p>
+                      )}
+                      <div className="home-hero-progress">
+                        <p className="home-hero-progress-count">{homeHeroQuestionProgressLabel}</p>
+                        <div className="home-hero-progress-track">
+                          <span style={{ width: `${nextCourseProgressPercent > 0 ? Math.max(4, nextCourseProgressPercent) : 0}%` }} />
+                        </div>
+                        <small>
+                          ความคืบหน้า{' '}
+                          <span className="home-hero-progress-value">{nextCourseProgressPercent}%</span>
+                        </small>
+                      </div>
+                      <img className="home-hero-mascot" src={heroMascotImage} alt="" loading="lazy" />
+                    </div>
+
+                    <div className="home-hero-cta">
+                      <h3>พร้อมแล้วไปลุยกันเลย! 🚀</h3>
+                      <button
+                        type="button"
+                        className="home-hero-cta-btn"
+                        onClick={handlePrimaryCTA}
+                        disabled={statsLoading}
+                      >
+                        <span>{hasCourses ? 'เริ่มทำแบบฝึกหัดต่อ' : 'เลือกคอร์สแรกของคุณ'}</span>
+                        <ArrowRight size={18} strokeWidth={2.4} aria-hidden="true" />
+                      </button>
+                      <div className="home-streak">
+                        <span className="home-streak-fire" aria-hidden="true">
+                          <img src={fireIcon} alt="" />
+                        </span>
+                        <div className="home-streak-copy">
+                          <strong>ต่อเนื่อง {homeStreakDays} วัน</strong>
+                          <small>
+                            {homeStreakDays > 0
+                              ? 'สู้ๆ อีกนิด ความเก่งจะตามมา!'
+                              : 'เริ่มฝึกวันนี้ แล้วค่อยๆ เก่งขึ้นทุกวัน'}
+                          </small>
+                        </div>
+                      </div>
+                      <div className="home-streak-week" aria-label="สรุปการฝึกรายสัปดาห์">
+                        {(homeWeekActivity.length
+                          ? homeWeekActivity
+                          : WEEKDAY_LABELS.map((label) => ({ label, isActive: false, isToday: false }))
+                        ).map((day, index) => (
+                          <span
+                            key={`home-streak-${day.dayKey || day.label || index}`}
+                            className={[
+                              'home-streak-dot',
+                              day?.isActive ? 'active' : '',
+                              day?.isToday ? 'today' : '',
+                            ].filter(Boolean).join(' ')}
+                            title={day?.isActive ? `${day?.label || WEEKDAY_LABELS[index]}: เรียนแล้ว` : undefined}
+                          >
+                            <i aria-hidden="true" />
+                            <small>{day?.label || WEEKDAY_LABELS[index] || '-'}</small>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="home-subjects-section">
+                    <div className="home-subjects-layout">
+                      <div className="home-subjects-carousel">
+                        <div className="home-section-head">
+                          <h2>วิชาของฉัน ({enrichedEnrolledCourses.length} วิชา)</h2>
+                          {homeSubjectCards.length > homeSubjectsVisibleCount ? (
+                            <div className="home-subjects-nav">
+                              <button
+                                type="button"
+                                className="home-subjects-nav-btn"
+                                onClick={() => scrollHomeSubjects(-1)}
+                                disabled={homeSubjectsPage <= 0}
+                                aria-label="เลื่อนไปคอร์สก่อนหน้า"
+                              >
+                                <ChevronLeft size={18} strokeWidth={2.4} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="home-subjects-nav-btn"
+                                onClick={() => scrollHomeSubjects(1)}
+                                disabled={homeSubjectsPage >= homeSubjectsMaxPage}
+                                aria-label="เลื่อนไปคอร์สถัดไป"
+                              >
+                                <ChevronRight size={18} strokeWidth={2.4} aria-hidden="true" />
+                              </button>
                             </div>
-                            <div className="continue-progress-track">
-                              <span style={{ width: `${nextCourseProgressPercent > 0 ? Math.max(4, nextCourseProgressPercent) : 0}%` }} />
-                            </div>
-                            <strong>{nextCourseProgressPercent}%</strong>
+                          ) : null}
+                        </div>
+                        {homeSubjectCards.length > 0 ? (
+                          <div className="home-subjects-viewport">
+                          <div
+                            ref={homeSubjectsScrollRef}
+                            className="home-subjects-scroll"
+                            aria-label="รายการคอร์สของฉัน"
+                          >
+                            {homeSubjectCards.map((card) => (
+                              <article key={card.id} className={`home-subject-card accent-${card.accent}`}>
+                                <div className="home-subject-top">
+                                  <div className="home-subject-title">
+                                    <h3>{card.courseName}</h3>
+                                    {card.gradeLabel ? (
+                                      <span className="home-subject-grade">{card.gradeLabel}</span>
+                                    ) : null}
+                                  </div>
+                                  <span className="home-subject-icon" aria-hidden="true">
+                                    {getSubjectEmoji(card.subjectLabel || card.courseName)}
+                                  </span>
+                                </div>
+                                <div className="home-subject-progress">
+                                  <div className="home-subject-donut" style={{ '--value': card.progress }}>
+                                    <span>{card.progress}%</span>
+                                  </div>
+                                  <p>{card.doneLabel}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="home-subject-action"
+                                  onClick={() => handleCourseStart(card.course)}
+                                >
+                                  {card.started ? 'เรียนต่อ' : 'เริ่มเรียน'} →
+                                </button>
+                              </article>
+                            ))}
                           </div>
+                          </div>
+                        ) : (
+                          <article className="home-subject-empty">
+                            <h3>ยังไม่มีคอร์สที่ลงทะเบียน</h3>
+                            <p>เริ่มเลือกคอร์สเพื่อเก็บคะแนนและพัฒนาการ</p>
+                            <button type="button" onClick={handleBrowseCourses}>สำรวจคอร์สทั้งหมด</button>
+                          </article>
+                        )}
+                      </div>
+
+                      <article className="home-ai-card">
+                        <div className="home-ai-head">
+                          <span className="home-ai-badge" aria-hidden="true">
+                            <img src={aiBadgeImage} alt="" />
+                          </span>
+                          <h3>AI แนะนำสำหรับคุณ</h3>
                         </div>
-                        <button type="button" className="continue-action-btn" onClick={() => handleCourseStart(nextCourse)}>
-                          เรียนต่อ →
+                        <p className="home-ai-sub">
+                          {homeRecommendTopics.length > 0
+                            ? `วันนี้แนะนำให้ฝึก ${homeRecommendTopics.length} เรื่องนี้`
+                            : 'หัวข้อที่ควรทบทวนสำหรับคุณ'}
+                        </p>
+                        {homeRecommendTopics.length > 0 ? (
+                          <ol className="home-ai-list">
+                            {homeRecommendTopics.map((item, index) => (
+                              <li key={item.id}>
+                                <span className="home-ai-rank">{index + 1}</span>
+                                <span className="home-ai-topic">{item.topic}</span>
+                                <span className="home-ai-tag">{item.subjectName}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p className="home-ai-empty">
+                            ทำแบบฝึกหัดเพิ่มเพื่อให้ระบบแนะนำหัวข้อที่ควรทบทวน
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          className="home-ai-action"
+                          onClick={() => setActiveTab('analysis')}
+                        >
+                          ไปฝึกตามแผน →
+                        </button>
+                      </article>
+                    </div>
+                  </section>
+
+                  <section className="home-progress-grid">
+                    <article className="home-overall-card">
+                      <div className="home-section-head">
+                        <h2>ความก้าวหน้าโดยรวม</h2>
+                        <label className="home-range-select">
+                          <select defaultValue="week" aria-label="ช่วงเวลา">
+                            <option value="week">สัปดาห์นี้</option>
+                          </select>
+                          <ChevronDown size={16} strokeWidth={2.2} aria-hidden="true" />
+                        </label>
+                      </div>
+                      <div className="home-overall-stats">
+                        <div className="home-overall-stat">
+                          <span>ทำข้อสอบทั้งหมด</span>
+                          <strong>
+                            {homeOverallStats.questionsDone > 0
+                              ? `${homeOverallStats.questionsDone.toLocaleString('th-TH')} ข้อ`
+                              : `${homeOverallStats.completedQuizzes.toLocaleString('th-TH')} ชุด`}
+                          </strong>
+                          <small className={`home-overall-stat-trend ${homeOverallStats.questionsTrend.positive ? 'up' : 'down'}`}>
+                            {homeOverallStats.questionsTrend.text}
+                          </small>
+                        </div>
+                        <div className="home-overall-stat">
+                          <span>คะแนนเฉลี่ย</span>
+                          <strong>{homeOverallStats.avgScore}%</strong>
+                          <small className={`home-overall-stat-trend ${homeOverallStats.avgScoreTrend.positive ? 'up' : 'down'}`}>
+                            {homeOverallStats.avgScoreTrend.text}
+                          </small>
+                        </div>
+                        <div className="home-overall-stat">
+                          <span>เวลาเรียนทั้งหมด</span>
+                          <strong>{formatHomeMinutesText(homeOverallStats.minutesThisWeek)}</strong>
+                          <small className={`home-overall-stat-trend ${homeOverallStats.minutesTrend.positive ? 'up' : 'down'}`}>
+                            {homeOverallStats.minutesTrend.text}
+                          </small>
+                        </div>
+                      </div>
+                    </article>
+
+                    <article className="home-trend-card">
+                      <div className="home-section-head">
+                        <h2>พัฒนาการของคุณ</h2>
+                        <button
+                          type="button"
+                          className="home-trend-link"
+                          onClick={() => setActiveTab('analysis')}
+                        >
+                          ดูรายงานทั้งหมด &gt;
                         </button>
                       </div>
-                    ) : (
-                      <div className="dashboard-continue-empty">
-                        <p>ยังไม่มีคอร์สที่ลงทะเบียน</p>
-                        <button type="button" onClick={handleBrowseCourses}>สำรวจคอร์สทั้งหมด</button>
-                      </div>
-                    )}
+                      {hasHomeTrendData ? (
+                        <div className="home-trend-chart-wrap">
+                          <svg
+                            className="home-trend-chart"
+                            viewBox={`0 0 ${homeTrendChart.width} ${homeTrendChart.height}`}
+                            preserveAspectRatio="xMidYMid meet"
+                            role="img"
+                            aria-label="กราฟพัฒนาการของคะแนน"
+                          >
+                            <defs>
+                              <linearGradient id="home-trend-area" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#4d88e8" stopOpacity="0.22" />
+                                <stop offset="100%" stopColor="#4d88e8" stopOpacity="0.03" />
+                              </linearGradient>
+                            </defs>
+                            {homeTrendChart.yTicks.map((tick) => (
+                              <g key={`home-trend-tick-${tick.value}`}>
+                                <line
+                                  x1={homeTrendChart.padding.left}
+                                  x2={homeTrendChart.width - homeTrendChart.padding.right}
+                                  y1={tick.y}
+                                  y2={tick.y}
+                                  className="home-trend-grid"
+                                />
+                                <text
+                                  x={homeTrendChart.padding.left - 10}
+                                  y={tick.y + 4}
+                                  className="home-trend-y-label"
+                                >
+                                  {tick.value}
+                                </text>
+                              </g>
+                            ))}
+                            {homeTrendChart.areaPath ? (
+                              <path d={homeTrendChart.areaPath} fill="url(#home-trend-area)" />
+                            ) : null}
+                            {homeTrendChart.linePath ? (
+                              <path d={homeTrendChart.linePath} className="home-trend-line" />
+                            ) : null}
+                            {homeTrendChart.points.map((point, index) => (
+                              <g key={`home-trend-point-${point.label}-${index}`}>
+                                <circle
+                                  cx={point.x}
+                                  cy={point.y}
+                                  r={index === homeTrendChart.points.length - 1 ? 5 : 4}
+                                  className={`home-trend-point ${index === homeTrendChart.points.length - 1 ? 'latest' : ''}`}
+                                />
+                                <text
+                                  x={point.x}
+                                  y={homeTrendChart.height - 12}
+                                  className="home-trend-x-label"
+                                >
+                                  {point.label}
+                                </text>
+                              </g>
+                            ))}
+                            {homeTrendChart.latest ? (
+                              <g>
+                                <rect
+                                  x={Math.min(
+                                    homeTrendChart.latest.x - 54,
+                                    homeTrendChart.width - homeTrendChart.padding.right - 108,
+                                  )}
+                                  y={homeTrendChart.latest.y - 38}
+                                  width="108"
+                                  height="28"
+                                  rx="8"
+                                  className="home-trend-badge-bg"
+                                />
+                                <text
+                                  x={Math.min(
+                                    homeTrendChart.latest.x,
+                                    homeTrendChart.width - homeTrendChart.padding.right - 54,
+                                  )}
+                                  y={homeTrendChart.latest.y - 20}
+                                  textAnchor="middle"
+                                  className="home-trend-badge-text"
+                                >
+                                  {`คะแนนล่าสุด ${homeTrendChart.latest.value}%`}
+                                </text>
+                              </g>
+                            ) : null}
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="home-trend-empty">ยังไม่มีข้อมูลเพียงพอสำหรับกราฟพัฒนาการ</div>
+                      )}
+                    </article>
                   </section>
-
+                    </>
+                  )}
                 </>
               )}
 
@@ -2792,19 +3421,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
                   loading={statsLoading}
                   onBrowseCourses={handleBrowseCourses}
                   onViewCourseAnalysis={handleCourseAnalysis}
-                />
-              )}
-
-              {activeTab === 'ai-recommend' && (
-                <AIRecommendationPanel
-                  user={user}
-                  courses={enrichedEnrolledCourses}
-                  selectedCourseId={selectedAiCourseId}
-                  onSelectedCourseIdChange={setSelectedAiCourseId}
-                  loading={statsLoading}
-                  onBrowseCourses={handleBrowseCourses}
-                  onOpenCourseTab={handleOpenCourseTab}
-                  onOpenCourseAnalysis={handleCourseAnalysis}
                 />
               )}
 

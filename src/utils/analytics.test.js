@@ -48,7 +48,7 @@ describe('analytics', () => {
     analytics.setAnalyticsUser('user-123');
     analytics.setAnalyticsUser(null);
 
-    expect(posthog.identify).toHaveBeenCalledWith('user-123');
+    expect(posthog.identify).toHaveBeenCalledWith('user-123', undefined);
     expect(posthog.reset).toHaveBeenCalledTimes(1);
   });
 });

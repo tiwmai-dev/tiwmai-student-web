@@ -5,7 +5,6 @@ import {
   ChartColumn,
   ChevronDown,
   Home,
-  Lightbulb,
   Settings,
   ShoppingCart,
 } from 'lucide-react';
@@ -142,14 +141,6 @@ const Header = ({
   ]);
 
   const handleSelectOrNavigate = (tab) => {
-    if (tab === 'ranking') {
-      navigate('/ranking');
-      return;
-    }
-    if (tab === 'ai-recommend') {
-      navigate('/dashboard', { state: { activeTab: 'ai-recommend' } });
-      return;
-    }
     if (tab === 'chat') {
       navigate('/chat');
       return;
@@ -186,15 +177,12 @@ const Header = ({
     { key: 'my-courses', label: 'คอร์สของฉัน', icon: BookOpen, onClick: () => handleSelectOrNavigate('my-courses') },
     { key: 'browse', label: 'ซื้อคอร์ส', icon: ShoppingCart, onClick: () => handleSelectOrNavigate('browse') },
     { key: 'analysis', label: 'รายงานผล', icon: ChartColumn, onClick: () => handleSelectOrNavigate('analysis') },
-    { key: 'ai-recommend', label: 'น้องติวแนะนำ', icon: Lightbulb, onClick: () => handleSelectOrNavigate('ai-recommend') },
     { key: 'settings', label: 'ตั้งค่า', icon: Settings, onClick: () => handleSelectOrNavigate('settings') },
   ];
 
   const resolvedActiveTab = location.pathname === '/payment-history'
     ? 'payment-history'
-    : location.pathname === '/ranking'
-      ? 'ranking'
-      : activeTab;
+    : activeTab;
 
   const displayName = String(user?.name || '').trim() || 'ผู้ใช้';
   const initial = displayName.charAt(0).toUpperCase();
