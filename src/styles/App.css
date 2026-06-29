@@ -4739,6 +4739,108 @@ body {
   padding: 0;
 }
 
+.app-auth .mock-exam-breadcrumb-hero {
+  position: sticky;
+  top: 54px;
+  z-index: 140;
+  background:
+    radial-gradient(920px 520px at 16% -8%, var(--student-bg-glow-blue) 0%, rgba(91, 143, 236, 0) 68%),
+    radial-gradient(780px 460px at 88% -6%, var(--student-bg-glow-cyan) 0%, rgba(111, 190, 216, 0) 72%),
+    var(--student-bg);
+  padding-bottom: 6px;
+}
+
+.app-auth .course-page-mock-exam .mock-exam-breadcrumb-hero {
+  position: relative;
+  top: auto;
+  z-index: 2;
+  flex: 0 0 auto;
+  padding: 2px 0 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.app-auth .course-page-mock-exam .mock-exam-hero-inner {
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2px 20px 10px;
+}
+
+.app-auth .course-page-mock-exam .mock-exam-breadcrumb-hero .course-breadcrumb {
+  margin-bottom: 0;
+}
+
+.app-auth .mock-exam-breadcrumb-hero .course-breadcrumb-link {
+  position: relative;
+  z-index: 1;
+}
+
+.app-auth .course-page-mock-exam {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.app-auth .course-page-mock-exam .mock-exam-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 14px 20px 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+.app-auth .course-page-mock-exam .mock-exam-stage,
+.app-auth .course-page-mock-exam .mock-exam-loading-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-auth .course-page-mock-exam .mock-exam-stage-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-auth .course-page-mock-exam .mock-exam-stage-body .quiz-interface {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.app-auth .course-page-mock-exam .quiz-progress {
+  flex: 0 0 auto;
+  padding: 12px 18px 14px;
+}
+
+.app-auth .course-page-mock-exam .question-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.app-auth .course-page-mock-exam .quiz-navigation {
+  flex: 0 0 auto;
+}
+
+.App:has(.course-page-mock-exam) .site-landing-footer,
+.App:has(.course-page-mock-exam) .app-footer {
+  display: none;
+}
+
 .course-breadcrumb {
   max-width: 1400px;
   margin: 0 auto;
@@ -4758,6 +4860,12 @@ body {
   color: #64748b;
   text-decoration: none;
   transition: color 0.2s ease;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
 }
 
 .course-breadcrumb-link:hover {
@@ -11885,7 +11993,7 @@ body {
 }
 
 .mock-exam-stage-body .quiz-interface {
-  min-height: calc(100vh - 64px);
+  min-height: 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.96));
 }
 
@@ -17957,14 +18065,12 @@ body {
   color: var(--student-blue);
 }
 
-.app-auth .course-hero,
 .app-auth .course-hero.course-hero-payment-mode,
 .app-auth .lesson-breadcrumb-bar,
 .app-auth .course-header {
   border-bottom-color: #d7e4f0;
 }
 
-.app-auth .course-hero,
 .app-auth .course-hero.course-hero-payment-mode {
   background:
     radial-gradient(circle at 12% 10%, rgba(111, 157, 228, 0.15), transparent 44%),
@@ -17972,16 +18078,17 @@ body {
     linear-gradient(120deg, #f7faff 0%, #edf4ff 58%, #f4f7fb 100%);
 }
 
-.app-auth .course-hero::after,
 .app-auth .course-hero.course-hero-payment-mode::after {
   opacity: 0.04;
 }
 
+.app-auth .course-hero:not(.course-hero-payment-mode),
 .app-auth .course-hero.lesson-breadcrumb-hero {
   background: transparent;
   border-bottom: none;
 }
 
+.app-auth .course-hero:not(.course-hero-payment-mode)::after,
 .app-auth .course-hero.lesson-breadcrumb-hero::after {
   display: none;
 }

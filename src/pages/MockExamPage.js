@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import ErrorBoundary from '../components/ErrorBoundary';
 import QuizInterface from '../components/QuizInterface';
@@ -157,17 +157,35 @@ const MockExamPage = ({ user }) => {
 
   return (
     <ErrorBoundary>
-      <div className="course-page">
+      <div className="course-page course-page-mock-exam">
         <Header user={user} onLogout={logout} activeTab="courses" onSelectTab={handleSelectHeaderTab} />
 
         <section className="course-hero lesson-breadcrumb-hero mock-exam-breadcrumb-hero">
           <div className="course-hero-inner mock-exam-hero-inner">
             <div className="course-breadcrumb">
-              <Link className="course-breadcrumb-link" to="/dashboard">หน้าแรก</Link>
+              <button
+                type="button"
+                className="course-breadcrumb-link"
+                onClick={() => navigate('/dashboard', { state: { activeTab: 'courses' } })}
+              >
+                หน้าแรก
+              </button>
               <span className="course-breadcrumb-separator" aria-hidden="true">/</span>
-              <Link className="course-breadcrumb-link" to={`/course/${courseId}`}>{courseName || 'คอร์สเรียน'}</Link>
+              <button
+                type="button"
+                className="course-breadcrumb-link"
+                onClick={() => navigate(`/course/${courseId}`)}
+              >
+                {courseName || 'คอร์สเรียน'}
+              </button>
               <span className="course-breadcrumb-separator" aria-hidden="true">/</span>
-              <span className="course-breadcrumb-item">ข้อสอบจำลอง</span>
+              <button
+                type="button"
+                className="course-breadcrumb-link"
+                onClick={() => navigate(`/course/${courseId}`, { state: { activeTab: 'mock_exams' } })}
+              >
+                ข้อสอบจำลอง
+              </button>
               <span className="course-breadcrumb-separator" aria-hidden="true">/</span>
               <span className="course-breadcrumb-current">{initialQuiz?.title || 'กำลังโหลดข้อสอบ'}</span>
             </div>

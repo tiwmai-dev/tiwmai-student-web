@@ -265,16 +265,25 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
   };
 
   const selectAnswer = (questionId, answerIndex) => {
-    if (submittedAnswers[questionId]) return;
+    if (!isMockExam && submittedAnswers[questionId]) return;
     if (answers[questionId] === answerIndex) return;
 
     setAnswers(prev => ({
       ...prev,
       [questionId]: answerIndex
     }));
+
+    if (isMockExam) {
+      setFirstAnswers(prev => (
+        Object.prototype.hasOwnProperty.call(prev, questionId)
+          ? prev
+          : { ...prev, [questionId]: answerIndex }
+      ));
+    }
   };
 
   const confirmAnswer = (questionId) => {
+    if (isMockExam) return;
     if (submittedAnswers[questionId]) return;
     const userAnswerIndex = answers[questionId];
     if (userAnswerIndex === undefined) return;
@@ -884,7 +893,13 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
 
           <div className="answer-review">
             <h4>✅ เฉลยแบบทีละข้อ</h4>
-            <p>{hideHints ? 'เฉลยและคำอธิบายแสดงในแชทน้องติวหลังกดยืนยันคำตอบ' : 'ระบบแสดงเฉลยหลังกดยืนยันคำตอบในแต่ละข้อ'}</p>
+            <p>{
+              hideHints
+                ? 'เฉลยและคำอธิบายแสดงในแชทน้องติวหลังกดยืนยันคำตอบ'
+                : isMockExam
+                ? 'ตรวจสอบเฉลยและคำอธิบายแต่ละข้อด้านล่าง'
+                : 'ระบบแสดงเฉลยหลังกดยืนยันคำตอบในแต่ละข้อ'
+            }</p>
           </div>
 
           <div className="results-actions">
@@ -1069,7 +1084,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
   return (
     <div className="quiz-interface">
       <div className="quiz-progress">
-        {onBackToCourse && (
+        {onBackToCourse && !isMockExam && (
           <div className="quiz-top-actions">
             <button
               onClick={(e) => {
@@ -1101,7 +1116,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
                 className="submit-nav-button top-card"
                 type="button"
               >
-                ส่งแบบฝึกหัด
+                {isMockExam ? 'ส่งข้อสอบ' : 'ส่งแบบฝึกหัด'}
               </button>
             </div>
           </div>
@@ -1140,13 +1155,13 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
             <button
               key={index}
               onClick={() => selectAnswer(question.id, index)}
-              disabled={isAnswerConfirmed}
+              disabled={!isMockExam && isAnswerConfirmed}
               className={`option-button ${
                 answers[question.id] === index ? 'selected' : ''
               } ${
-                isRevealed && hasCorrect && index === question.correctAnswer ? 'correct' : ''
+                !isMockExam && isRevealed && hasCorrect && index === question.correctAnswer ? 'correct' : ''
               } ${
-                isRevealed && hasCorrect && answers[question.id] === index && index !== question.correctAnswer ? 'incorrect' : ''
+                !isMockExam && isRevealed && hasCorrect && answers[question.id] === index && index !== question.correctAnswer ? 'incorrect' : ''
               }`}
             >
               <span className="option-label">
@@ -1155,14 +1170,14 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
               <span className="option-text"><MathText text={option} inline /></span>
               {answers[question.id] === index && (
                 <span className="selected-mark">
-                  {isRevealed && hasCorrect && index !== question.correctAnswer ? '✗' : '✓'}
+                  {!isMockExam && isRevealed && hasCorrect && index !== question.correctAnswer ? '✗' : '✓'}
                 </span>
               )}
             </button>
           ))}
         </div>
 
-        {!isAnswerConfirmed ? (
+        {!isMockExam && !isAnswerConfirmed ? (
           <div className="question-submit-row">
             <button
               type="button"
@@ -1186,7 +1201,7 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
           </div>
         )}
 
-        {isRevealed && !isSplitMode && (
+        {isRevealed && !isSplitMode && !isMockExam && (
           <div className={`answer-feedback ${isCorrect ? 'correct' : 'incorrect'}`}>
             <div className="answer-feedback-title">
               {!hasCorrect ? 'ℹ️ ยังไม่มีเฉลย' : (isCorrect ? '✅ ถูกต้อง' : '❌ ไม่ถูกต้อง')}
