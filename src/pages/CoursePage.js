@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Clock,
   FileText,
   Hash,
@@ -2366,17 +2367,32 @@ const CoursePage = ({ user }) => {
                 </div>
                 
                 <div className="course-stats-row">
-                  <div className="course-stat-card">
-                    <span className="course-stat-label">บทเรียน</span>
-                    <strong className="course-stat-value">{lessons.length}</strong>
+                  <div className="course-stat-card course-stat-card-lessons">
+                    <div className="course-stat-copy">
+                      <span className="course-stat-label">บทเรียน</span>
+                      <strong className="course-stat-value">{lessons.length}</strong>
+                    </div>
+                    <span className="course-stat-icon" aria-hidden="true">
+                      <BookOpen size={22} strokeWidth={2.2} />
+                    </span>
                   </div>
-                  <div className="course-stat-card">
-                    <span className="course-stat-label">แบบทดสอบ</span>
-                    <strong className="course-stat-value">{lessonQuizCount}</strong>
+                  <div className="course-stat-card course-stat-card-quizzes">
+                    <div className="course-stat-copy">
+                      <span className="course-stat-label">แบบทดสอบ</span>
+                      <strong className="course-stat-value">{lessonQuizCount}</strong>
+                    </div>
+                    <span className="course-stat-icon" aria-hidden="true">
+                      <ClipboardList size={22} strokeWidth={2.2} />
+                    </span>
                   </div>
-                  <div className="course-stat-card">
-                    <span className="course-stat-label">ข้อสอบจำลอง</span>
-                    <strong className="course-stat-value">{mockExams.length}</strong>
+                  <div className="course-stat-card course-stat-card-mocks">
+                    <div className="course-stat-copy">
+                      <span className="course-stat-label">ข้อสอบจำลอง</span>
+                      <strong className="course-stat-value">{mockExams.length}</strong>
+                    </div>
+                    <span className="course-stat-icon" aria-hidden="true">
+                      <ClipboardList size={22} strokeWidth={2.2} />
+                    </span>
                   </div>
                 </div>
 
@@ -3465,6 +3481,8 @@ const CoursePage = ({ user }) => {
         </>
         )}
       </div>
+      </>
+      ) : null}
       <ConfirmActionDialog
         open={Boolean(practiceStartDialog)}
         title={practiceStartDialog?.title || 'ยืนยันเริ่มทำแบบฝึก'}
@@ -3483,8 +3501,6 @@ const CoursePage = ({ user }) => {
         onConfirm={handleConfirmTrialStart}
         onClose={() => setTrialStartDialog(null)}
       />
-      </>
-      ) : null}
     </div>
     </ErrorBoundary>
   );

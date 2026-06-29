@@ -134,3 +134,74 @@ export const readLatestLessonActivity = ({ user }) => {
     return null;
   }
 };
+
+export const readLearningActivityDays = ({ user }) => {
+  const userKey = getUserKey(user);
+  if (!userKey) return [];
+
+  try {
+    const parsed = readStoredActivity(userKey);
+    if (!parsed) return [];
+
+    const fallbackDay = parsed.updatedAt ? toLocalDayKey(parsed.updatedAt) : null;
+    return Array.from(
+      new Set(
+        (Array.isArray(parsed.activityDays) ? parsed.activityDays : [])
+          .concat(fallbackDay || [])
+          .filter(Boolean)
+          .map(String)
+      )
+    ).sort();
+  } catch (_) {
+    return [];
+  }
+};
+
+export const touchLearningActivityDay = ({
+  user,
+  courseId,
+  lessonId,
+  courseName,
+  lessonTitle,
+}) => {
+  const userKey = getUserKey(user);
+  if (!userKey) return;
+
+  const updatedAt = Date.now();
+  const todayKey = toLocalDayKey(updatedAt);
+  const previous = readStoredActivity(userKey);
+  const previousDays = Array.isArray(previous?.activityDays) ? previous.activityDays : [];
+  const activityDays = Array.from(
+    new Set([todayKey, ...previousDays].filter(Boolean).map(String))
+  )
+    .sort()
+    .slice(-MAX_ACTIVITY_DAYS);
+
+  const nextCourseId = courseId
+    ? String(courseId)
+    : String(previous?.courseId || '__activity__');
+  const courseChanged = Boolean(
+    courseId &&
+    previous?.courseId &&
+    String(courseId) !== String(previous.courseId)
+  );
+  const nextLessonId = lessonId
+    ? String(lessonId)
+    : (courseChanged ? '__activity__' : String(previous?.lessonId || '__activity__'));
+
+  const payload = {
+    userKey,
+    courseId: nextCourseId,
+    lessonId: nextLessonId,
+    courseName: courseName || previous?.courseName || '',
+    lessonTitle: lessonTitle || (courseChanged ? '' : (previous?.lessonTitle || '')),
+    updatedAt,
+    activityDays,
+  };
+
+  try {
+    localStorage.setItem(LAST_LESSON_ACTIVITY_KEY, JSON.stringify(payload));
+  } catch (_) {
+    // Ignore storage write failures to keep navigation uninterrupted.
+  }
+};

@@ -5962,10 +5962,45 @@ body {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
   padding: 14px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 74px;
+}
+
+.course-stat-copy {
   display: grid;
   gap: 4px;
-  min-height: 74px;
-  align-content: center;
+  min-width: 0;
+}
+
+.course-stat-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.course-stat-icon svg {
+  display: block;
+}
+
+.course-stat-card-lessons .course-stat-icon {
+  background: #e8f1fb;
+  color: #2f73d6;
+}
+
+.course-stat-card-quizzes .course-stat-icon {
+  background: #fff3e8;
+  color: #ff8f3d;
+}
+
+.course-stat-card-mocks .course-stat-icon {
+  background: #edf7f4;
+  color: #35b9b1;
 }
 
 .course-stat-label {
@@ -17942,6 +17977,15 @@ body {
   opacity: 0.04;
 }
 
+.app-auth .course-hero.lesson-breadcrumb-hero {
+  background: transparent;
+  border-bottom: none;
+}
+
+.app-auth .course-hero.lesson-breadcrumb-hero::after {
+  display: none;
+}
+
 .app-auth .subject-overview {
   --analysis-card-bg: rgba(255, 255, 255, 0.96);
   --analysis-card-border: #d6e3f2;
@@ -18906,6 +18950,13 @@ body {
 .app-auth .payment-history-page,
 .app-auth .chat-tutor-page {
   min-height: 100dvh;
+  padding-top: 54px;
+  box-sizing: border-box;
+}
+
+.app-auth .course-page:has(.split-screen),
+.app-auth .course-page:has(.split-screen-maximized) {
+  padding-top: 0;
 }
 
 .app-auth .course-content:has(.split-screen),
@@ -18965,7 +19016,7 @@ body {
 
 .app-auth .app-header-utility {
   position: fixed;
-  top: 22px;
+  top: 10px;
   right: 28px;
   z-index: 230;
   display: flex;
@@ -19147,9 +19198,10 @@ body {
   overflow: hidden;
   border-radius: 22px;
   padding: 1.6rem 1.7rem;
-  background: linear-gradient(135deg, #2f73d6 0%, #4a87ee 52%, #5b8bf5 100%);
-  color: #ffffff;
-  box-shadow: 0 14px 30px rgba(47, 115, 214, 0.28);
+  background: linear-gradient(160deg, #fff9ef 0%, #fef4fb 100%);
+  border: 1px solid #f3e3d4;
+  color: #173b62;
+  box-shadow: 0 8px 20px rgba(38, 73, 106, 0.07);
   min-height: 230px;
 }
 
@@ -19157,8 +19209,9 @@ body {
   display: inline-block;
   padding: 0.32rem 0.85rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #f0e6da;
+  color: #6b7f96;
   font-size: 0.86rem;
   font-weight: 700;
 }
@@ -19168,6 +19221,7 @@ body {
   font-size: 2.4rem;
   line-height: 1.15;
   font-weight: 800;
+  color: #173b62;
   max-width: 70%;
 }
 
@@ -19179,7 +19233,7 @@ body {
   display: block;
   font-size: 0.98rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.78);
+  color: #6b7f96;
 }
 
 .app-auth .home-hero-lesson {
@@ -19187,14 +19241,14 @@ body {
   font-size: 1.35rem;
   font-weight: 700;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.96);
+  color: #173b62;
   max-width: 100%;
 }
 
 .app-auth .home-hero-lesson-muted {
   font-size: 0.95rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.88);
+  color: #6b7f96;
 }
 
 .app-auth .home-hero-progress {
@@ -19207,13 +19261,13 @@ body {
   font-size: 0.98rem;
   font-weight: 700;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.9);
+  color: #5b6877;
 }
 
 .app-auth .home-hero-progress-track {
   height: 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(240, 139, 111, 0.22);
   overflow: hidden;
 }
 
@@ -19221,14 +19275,14 @@ body {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #ffffff;
+  background: linear-gradient(90deg, #f08b6f, #ffce8a);
 }
 
 .app-auth .home-hero-progress small {
   display: block;
   margin-top: 0.5rem;
   font-size: 1.02rem;
-  color: rgba(255, 255, 255, 0.92);
+  color: #5b6877;
   font-weight: 700;
 }
 
@@ -19236,13 +19290,14 @@ body {
   font-size: 1.45em;
   font-weight: 800;
   letter-spacing: 0.01em;
+  color: #173b62;
 }
 
 .app-auth .home-hero-mascot {
   position: absolute;
-  right: -12px;
-  bottom: -10px;
-  width: clamp(200px, 28vw, 320px);
+  right: 14px;
+  bottom: 44px;
+  width: clamp(180px, 26vw, 280px);
   height: auto;
   pointer-events: none;
   filter: drop-shadow(0 10px 18px rgba(60, 50, 120, 0.25));
@@ -19991,7 +20046,9 @@ body {
   }
 
   .app-auth .home-hero-mascot {
-    width: 175px;
+    width: 165px;
+    bottom: 34px;
+    right: 10px;
     opacity: 0.85;
   }
 }
@@ -21149,8 +21206,49 @@ body {
   background: #ffffff;
   border-radius: 14px;
   padding: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.app-auth .my-kpi-copy {
   display: grid;
   gap: 0.3rem;
+  min-width: 0;
+}
+
+.app-auth .my-kpi-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.app-auth .my-kpi-icon svg {
+  display: block;
+}
+
+.app-auth .my-kpi-card-score .my-kpi-icon {
+  background: #e8f1fb;
+  color: #2f73d6;
+}
+
+.app-auth .my-kpi-card-accuracy .my-kpi-icon {
+  background: #edf7f4;
+  color: #35b9b1;
+}
+
+.app-auth .my-kpi-card-quizzes .my-kpi-icon {
+  background: #fff3e8;
+  color: #ff8f3d;
+}
+
+.app-auth .my-kpi-card-time .my-kpi-icon {
+  background: #eef0ff;
+  color: #5b6fd6;
 }
 
 .app-auth .my-kpi-card span {
@@ -22437,7 +22535,7 @@ html[data-student-theme='dark'] .app-auth .settings-save-button:disabled {
   }
 
   .app-auth .app-header-utility {
-    top: 8px;
+    top: 6px;
     right: 10px;
     gap: 6px;
   }
@@ -23754,6 +23852,11 @@ html[data-student-theme='dark'] .app-auth .settings-save-button:disabled {
   align-items: start;
 }
 
+.home-page #landing-faq .landing-faq-intro {
+  margin-left: clamp(-3rem, -4.5vw, -1.25rem);
+  padding-left: 0;
+}
+
 .home-page #landing-faq .landing-faq-intro h2 {
   margin: -0.18rem 0 0;
   color: #173456;
@@ -23921,6 +24024,10 @@ html[data-student-theme='dark'] .app-auth .settings-save-button:disabled {
   .home-page #landing-faq .landing-faq-shell {
     grid-template-columns: 1fr;
     gap: 1.2rem;
+  }
+
+  .home-page #landing-faq .landing-faq-intro {
+    margin-left: 0;
   }
 
   .home-page #landing-faq .landing-faq-intro h2 {
