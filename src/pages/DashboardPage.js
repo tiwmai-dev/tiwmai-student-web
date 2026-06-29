@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Filter, Heart, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Clock3, Filter, Heart, Search, SlidersHorizontal, Target } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import LoadingSkeleton from '../components/LoadingSkeleton';
@@ -7,16 +7,28 @@ import SubjectOverviewPanel from '../components/SubjectOverviewPanel';
 import StudentSettingsPage from '../components/StudentSettingsPage';
 import CourseCard from '../components/BrowseCourseCard';
 import defaultCourseCoverImage from '../assets/images/illustrations/dashboard_logo.webp';
-import heroMascotImage from '../assets/images/illustrations/hero-recommend-mascot.webp';
+import defaultHeroMascotImage from '../assets/images/illustrations/auth-login-banner.webp';
+import { getCourseHeroMascotImage } from '../utils/courseHeroMascot';
 import aiBadgeImage from '../assets/images/illustrations/ai_logo.webp';
 import fireIcon from '../assets/images/icons/fire_icon.webp';
 import { courseAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
-import { readLatestLessonActivity } from '../utils/learningActivity';
+import { readLatestLessonActivity, readLearningActivityDays } from '../utils/learningActivity';
 import { readDailyEngagementMinutes } from '../utils/engagementTracking';
 import { trackEvent } from '../utils/analytics';
 
 const HOME_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const FALLBACK_COURSE_BATCH_SIZE = 2;
+
+const mapInBatches = async (items, batchSize, mapper) => {
+  const results = [];
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    const batchResults = await Promise.all(batch.map(mapper));
+    results.push(...batchResults);
+  }
+  return results;
+};
 
 const normalizeText = (value) => (value || '').toString().toLowerCase().trim();
 const STUDENT_API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api/v1';
@@ -475,6 +487,73 @@ const normalizeLessonId = (value) => {
   return text || null;
 };
 
+const courseIdOf = (course) => String(course?.id || course?.course_id || '').trim();
+
+const getCourseLatestActivityMs = (course, storedActivity = null) => {
+  const id = courseIdOf(course);
+  const attempts = Array.isArray(course?.attemptRows) ? course.attemptRows : [];
+  const fromAttempts = attempts.reduce((max, row) => {
+    const ms = Number(row?.submittedAtMs);
+    return Number.isFinite(ms) && ms > max ? ms : max;
+  }, 0);
+
+  const lastActivityRaw = course?.lastActivity || course?.last_activity;
+  let fromLastActivity = 0;
+  if (lastActivityRaw) {
+    const parsed = new Date(lastActivityRaw).getTime();
+    if (Number.isFinite(parsed)) fromLastActivity = parsed;
+  }
+
+  let fromStored = 0;
+  if (storedActivity && id && String(storedActivity.courseId || '') === id) {
+    const storedMs = Number(storedActivity.updatedAt);
+    if (Number.isFinite(storedMs)) fromStored = storedMs;
+  }
+
+  return Math.max(fromAttempts, fromLastActivity, fromStored);
+};
+
+const resolveRecommendedCourse = (courses, { user } = {}) => {
+  const list = Array.isArray(courses) ? courses.filter(Boolean) : [];
+  if (!list.length) return null;
+
+  const stored = readLatestLessonActivity({ user });
+  let bestCourse = null;
+  let bestMs = 0;
+
+  list.forEach((course) => {
+    const ms = getCourseLatestActivityMs(course, stored);
+    if (ms > bestMs) {
+      bestMs = ms;
+      bestCourse = course;
+    }
+  });
+
+  if (bestCourse && bestMs > 0) return bestCourse;
+
+  if (stored?.courseId) {
+    const storedCourse = list.find((course) => courseIdOf(course) === String(stored.courseId));
+    if (storedCourse) return storedCourse;
+  }
+
+  return (
+    list.find((course) => (course?.progress || 0) > 0) ||
+    list[0] ||
+    null
+  );
+};
+
+const getLatestAttemptRow = (course) => {
+  const attempts = Array.isArray(course?.attemptRows) ? course.attemptRows : [];
+  if (!attempts.length) return null;
+  return attempts.reduce((latest, row) => {
+    if (!latest) return row;
+    const latestMs = Number(latest?.submittedAtMs) || 0;
+    const rowMs = Number(row?.submittedAtMs) || 0;
+    return rowMs >= latestMs ? row : latest;
+  }, null);
+};
+
 const formatThaiShortDate = (date) => {
   try {
     return new Intl.DateTimeFormat('th-TH', {
@@ -777,103 +856,6 @@ const DashboardDialogModal = ({ config, onConfirm, onClose }) => {
   );
 };
 
-const HomeDashboardSkeleton = () => (
-  <div className="home-dashboard-skeleton" role="status" aria-live="polite" aria-label="กำลังโหลดหน้าหลัก">
-    <section className="home-hero-grid" aria-hidden="true">
-      <div className="home-hero-recommend home-skeleton-hero-left">
-        <span className="home-skeleton-line w-44" />
-        <span className="home-skeleton-line w-72 h-lg" />
-        <span className="home-skeleton-line w-56" />
-        <span className="home-skeleton-line w-64" />
-        <div className="home-skeleton-progress-track" />
-        <span className="home-skeleton-line w-36" />
-        <span className="home-skeleton-mascot" />
-      </div>
-      <div className="home-hero-cta home-skeleton-hero-right">
-        <span className="home-skeleton-line w-58 h-md" />
-        <span className="home-skeleton-button primary" />
-        <div className="home-skeleton-streak">
-          <span className="home-skeleton-circle sm" />
-          <div className="home-skeleton-streak-copy">
-            <span className="home-skeleton-line w-40" />
-            <span className="home-skeleton-line w-56" />
-          </div>
-        </div>
-        <div className="home-skeleton-week">
-          {Array.from({ length: 7 }, (_, index) => (
-            <span key={`home-skeleton-day-${index}`} className="home-skeleton-day">
-              <span className="home-skeleton-circle xs" />
-              <span className="home-skeleton-line w-16" />
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-
-    <section className="home-subjects-section" aria-hidden="true">
-      <div className="home-subjects-layout">
-        <div className="home-subjects-carousel">
-          <span className="home-skeleton-line w-44 h-md" />
-          <div className="home-subjects-scroll">
-            {Array.from({ length: 3 }, (_, index) => (
-              <article key={`home-subject-skeleton-${index}`} className="home-subject-card home-skeleton-subject-card">
-                <div className="home-skeleton-subject-top">
-                  <div className="home-skeleton-subject-title">
-                    <span className="home-skeleton-line w-52" />
-                    <span className="home-skeleton-line w-36" />
-                  </div>
-                  <span className="home-skeleton-square" />
-                </div>
-                <div className="home-skeleton-subject-progress">
-                  <span className="home-skeleton-circle md" />
-                  <span className="home-skeleton-line w-72" />
-                </div>
-                <span className="home-skeleton-button" />
-              </article>
-            ))}
-          </div>
-        </div>
-        <article className="home-ai-card home-skeleton-ai-card">
-          <div className="home-skeleton-ai-head">
-            <span className="home-skeleton-square sm" />
-            <span className="home-skeleton-line w-52" />
-          </div>
-          <span className="home-skeleton-line w-64" />
-          {Array.from({ length: 3 }, (_, index) => (
-            <span key={`home-ai-skeleton-row-${index}`} className="home-skeleton-ai-row" />
-          ))}
-          <span className="home-skeleton-button accent" />
-        </article>
-      </div>
-    </section>
-
-    <section className="home-progress-grid" aria-hidden="true">
-      <article className="home-overall-card home-skeleton-overall-card">
-        <div className="home-skeleton-card-head">
-          <span className="home-skeleton-line w-44 h-md" />
-          <span className="home-skeleton-line w-24 chip" />
-        </div>
-        <div className="home-skeleton-overall-stats">
-          {Array.from({ length: 3 }, (_, index) => (
-            <div key={`home-overall-skeleton-${index}`} className="home-skeleton-stat-block">
-              <span className="home-skeleton-line w-40" />
-              <span className="home-skeleton-line w-28 h-lg" />
-              <span className="home-skeleton-line w-48" />
-            </div>
-          ))}
-        </div>
-      </article>
-      <article className="home-trend-card home-skeleton-trend-card">
-        <div className="home-skeleton-card-head">
-          <span className="home-skeleton-line w-44 h-md" />
-          <span className="home-skeleton-line w-36" />
-        </div>
-        <div className="home-skeleton-chart" />
-      </article>
-    </section>
-  </div>
-);
-
 const MyCoursesSkeleton = () => (
   <div className="my-courses-skeleton" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูลคอร์สของฉัน">
     <div className="my-course-card-grid my-course-card-grid-skeleton" aria-hidden="true">
@@ -942,6 +924,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
   );
   const [liveCourseStats, setLiveCourseStats] = useState({});
   const [liveStatsResolved, setLiveStatsResolved] = useState(false);
+  const [enrolledCoursesResolved, setEnrolledCoursesResolved] = useState(false);
   const searchInputRef = useRef(null);
   const dialogResolverRef = useRef(null);
   const previousResolvedUserIdRef = useRef(null);
@@ -1004,6 +987,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
   const hasCourses = enrichedEnrolledCourses.length > 0;
   const shouldLoadLiveStats = ['courses', 'my-courses', 'browse', 'analysis'].includes(activeTab);
   const statsLoading = user != null && !liveStatsResolved;
+  const coursesShellLoading = user != null && !enrolledCoursesResolved;
   const handleRequireAuth = useCallback((mode = 'login') => {
     if (onShowAuth) {
       onShowAuth(mode);
@@ -1186,6 +1170,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
       setEnrolledCoursesState([]);
       setLiveCourseStats({});
       setLiveStatsResolved(false);
+      setEnrolledCoursesResolved(false);
     }
   }, [resolvedUserId]);
 
@@ -1193,50 +1178,96 @@ const DashboardPage = ({ user, onShowAuth }) => {
     const userId = resolvedUserId;
     if (!shouldLoadLiveStats) {
       setLiveStatsResolved(true);
+      setEnrolledCoursesResolved(true);
       return;
     }
 
     if (!userId) {
       setLiveCourseStats({});
       setLiveStatsResolved(true);
+      setEnrolledCoursesResolved(true);
       return;
     }
 
     let cancelled = false;
     setLiveStatsResolved(false);
     const run = async () => {
+      let enrolledCoursesList = [];
       try {
         try {
-          const summary = await courseAPI.getDashboardLearningSummary(userId, {
-            courseLimit: 50,
-          });
+          const enrolledData = await courseAPI.getUserCourses(userId);
+          enrolledCoursesList = toArray(enrolledData, 'courses');
+          if (!cancelled && enrolledCoursesList.length > 0) {
+            setEnrolledCoursesState(enrolledCoursesList);
+          }
+        } catch (enrollmentError) {
+          console.error('Failed to load enrolled courses for dashboard', enrollmentError);
+          enrolledCoursesList = [];
+        } finally {
+          if (!cancelled) {
+            setEnrolledCoursesResolved(true);
+          }
+        }
+
+        const applySummary = (summary) => {
           const summaryCourses = Array.isArray(summary?.courses) ? summary.courses : [];
           const summaryStats = summary?.course_stats && typeof summary.course_stats === 'object'
             ? summary.course_stats
             : {};
-          if (!cancelled && summaryCourses.length > 0) {
-            setEnrolledCoursesState(summaryCourses);
-            setLiveCourseStats(summaryStats);
-            setLiveStatsResolved(true);
+          const hasSummaryStats = Object.keys(summaryStats).length > 0;
+          if (summaryCourses.length > 0) {
+            if (!cancelled) {
+              setEnrolledCoursesState(summaryCourses);
+              setLiveCourseStats(summaryStats);
+              setLiveStatsResolved(true);
+            }
+            return { applied: true, needsFallback: false };
+          }
+          if (enrolledCoursesList.length > 0 && hasSummaryStats) {
+            if (!cancelled) {
+              setEnrolledCoursesState(enrolledCoursesList);
+              setLiveCourseStats(summaryStats);
+              setLiveStatsResolved(true);
+            }
+            return { applied: true, needsFallback: false };
+          }
+          return { applied: false, needsFallback: true, summaryStats };
+        };
+
+        try {
+          let summary = await courseAPI.getDashboardLearningSummary(userId, {
+            courseLimit: 50,
+          });
+          let summaryResult = applySummary(summary);
+          if (!summaryResult.applied && summaryResult.needsFallback) {
+            summary = await courseAPI.getDashboardLearningSummary(userId, {
+              courseLimit: 50,
+              skipCache: true,
+              bustDedupe: true,
+            });
+            summaryResult = applySummary(summary);
+          }
+          if (summaryResult.applied) {
             return;
           }
-          if (!cancelled && summaryCourses.length === 0) {
-            console.warn('Dashboard learning summary returned no courses; falling back to enrolled-courses.');
+          if (!cancelled) {
+            console.warn('Dashboard learning summary returned no courses; falling back to legacy stats loading.');
           }
         } catch (summaryError) {
-          console.warn('Dashboard learning summary unavailable; falling back to legacy stats loading.', summaryError);
+          console.warn('Dashboard learning summary unavailable.', summaryError);
+          if (!cancelled) {
+            if (enrolledCoursesList.length > 0) {
+              setEnrolledCoursesState(enrolledCoursesList);
+            }
+            setLiveCourseStats({});
+            setLiveStatsResolved(true);
+          }
+          return;
         }
 
-        let fallbackCourses = [];
-        try {
-          const enrolledData = await courseAPI.getUserCourses(userId);
-          fallbackCourses = toArray(enrolledData, 'courses');
-          if (!cancelled) {
-            setEnrolledCoursesState(fallbackCourses);
-          }
-        } catch (enrollmentError) {
-          console.error('Failed to sync enrolled courses during dashboard fallback', enrollmentError);
-          fallbackCourses = [];
+        const fallbackCourses = enrolledCoursesList;
+        if (!cancelled && fallbackCourses.length > 0) {
+          setEnrolledCoursesState(fallbackCourses);
         }
 
         if (fallbackCourses.length === 0) {
@@ -1273,8 +1304,10 @@ const DashboardPage = ({ user, onShowAuth }) => {
 
         const [allResults, courseEntries] = await Promise.all([
           loadQuizResultsForUser(),
-          Promise.all(
-            fallbackCourses.map(async (course) => {
+          mapInBatches(
+            fallbackCourses,
+            FALLBACK_COURSE_BATCH_SIZE,
+            async (course) => {
               const courseId = course?.id || course?.course_id;
               if (!courseId) return null;
               const courseExpired = isCourseExpiredRecord(course);
@@ -1416,7 +1449,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
                 }, {}),
                 totalQuizzes: regularQuizzes.length,
               };
-            })
+            }
           ),
         ]);
         const stats = {};
@@ -1618,6 +1651,11 @@ const DashboardPage = ({ user, onShowAuth }) => {
                 if (!attemptStats || attemptStats.total <= 0) return null;
                 const submittedAtRaw = item?.submitted_at || item?.updated_at || item?.created_at || null;
                 const submittedAtMs = submittedAtRaw ? new Date(submittedAtRaw).getTime() : NaN;
+                const explicitLessonId = normalizeLessonId(item?.lesson_id || item?.lessonId);
+                const quizMappedLessonId = normalizeLessonId(entry.quizToLessonId?.[String(item?.quiz_id || '')]);
+                const mappedLessonId = explicitLessonId && entry.lessonNameById?.[explicitLessonId]
+                  ? explicitLessonId
+                  : (quizMappedLessonId || explicitLessonId);
                 const safeScore = Math.max(
                   0,
                   Math.min(100, Math.round((attemptStats.correct / attemptStats.total) * 100))
@@ -1628,6 +1666,10 @@ const DashboardPage = ({ user, onShowAuth }) => {
                   submittedAt: submittedAtRaw || null,
                   submittedAtMs: Number.isFinite(submittedAtMs) ? submittedAtMs : 0,
                   quizTitle: String(item?.quiz_title || item?.quiz_name || item?.title || '').trim(),
+                  lessonId: mappedLessonId || null,
+                  lessonName: mappedLessonId
+                    ? String(entry.lessonNameById?.[mappedLessonId] || '').trim()
+                    : '',
                   sequence: index + 1,
                 };
               })
@@ -1774,7 +1816,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
     return () => {
       cancelled = true;
     };
-  }, [shouldLoadLiveStats, resolvedUserId, user?.user_id, user?.id, user?.studentId, user?.username]);
+  }, [shouldLoadLiveStats, resolvedUserId]);
 
   useEffect(() => {
     const shortcutHandler = (event) => {
@@ -1869,17 +1911,16 @@ const DashboardPage = ({ user, onShowAuth }) => {
     searchParams,
   ]);
 
-  const getNextCourse = () => {
-    return (
-      enrichedEnrolledCourses.find((course) => (course?.progress || 0) > 0) ||
-      enrichedEnrolledCourses[0] ||
-      null
-    );
-  };
-
-  const nextCourse = getNextCourse();
+  const nextCourse = useMemo(
+    () => resolveRecommendedCourse(enrichedEnrolledCourses, { user }),
+    [enrichedEnrolledCourses, user]
+  );
   const nextCourseTitle = nextCourse?.name || nextCourse?.title || 'คอร์สเรียน';
   const nextCourseProgressPercent = Math.max(0, Math.min(100, Math.round(Number(nextCourse?.progress || 0))));
+  const homeHeroMascotImage = useMemo(
+    () => (hasCourses ? getCourseHeroMascotImage(nextCourse, defaultHeroMascotImage) : defaultHeroMascotImage),
+    [hasCourses, nextCourse]
+  );
 
   const stats = useMemo(() => {
     const minutesThisWeek = enrichedEnrolledCourses.reduce(
@@ -1943,6 +1984,30 @@ const DashboardPage = ({ user, onShowAuth }) => {
       addActiveDay(course?.lastActivity || course?.last_activity);
     });
 
+    Object.values(liveCourseStats || {}).forEach((live) => {
+      if (!live || typeof live !== 'object') return;
+      if (Array.isArray(live.learningActivityDays)) {
+        live.learningActivityDays.forEach(addActiveDay);
+      }
+      addActiveDay(live.lastActivity);
+      (Array.isArray(live.attemptRows) ? live.attemptRows : []).forEach((attempt) => {
+        const submittedAtMs = Number(attempt?.submittedAtMs);
+        addActiveDay(
+          Number.isFinite(submittedAtMs) && submittedAtMs > 0
+            ? submittedAtMs
+            : attempt?.submittedAt
+        );
+      });
+    });
+
+    readLearningActivityDays({ user }).forEach(addActiveDay);
+
+    readDailyEngagementMinutes({ user, days: 45 }).forEach((day) => {
+      if ((day.minutes || 0) > 0) {
+        addActiveDay(day.dateKey);
+      }
+    });
+
     const latestLessonActivity = readLatestLessonActivity({ user });
     if (Array.isArray(latestLessonActivity?.activityDays)) {
       latestLessonActivity.activityDays.forEach(addActiveDay);
@@ -1998,7 +2063,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
         weekActivity,
       },
     };
-  }, [enrichedEnrolledCourses, user]);
+  }, [enrichedEnrolledCourses, liveCourseStats, user]);
 
   useEffect(() => {
     if (enrichedEnrolledCourses.length === 0) {
@@ -2009,9 +2074,9 @@ const DashboardPage = ({ user, onShowAuth }) => {
       (course) => String(course?.id || course?.course_id) === String(selectedMyCourseId || '')
     );
     if (hasSelected) return;
-    const defaultCourse = enrichedEnrolledCourses.find((course) => (course?.progress || 0) > 0) || enrichedEnrolledCourses[0];
+    const defaultCourse = resolveRecommendedCourse(enrichedEnrolledCourses, { user });
     setSelectedMyCourseId(defaultCourse?.id || defaultCourse?.course_id || null);
-  }, [enrichedEnrolledCourses, selectedMyCourseId]);
+  }, [enrichedEnrolledCourses, selectedMyCourseId, user]);
 
   const handlePrimaryCTA = () => {
     trackEvent('click_primary_cta', { source: 'hero' });
@@ -2021,7 +2086,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
       return;
     }
 
-    const nextCourseId = String(nextCourse?.id || nextCourse?.course_id || '').trim();
+    const nextCourseId = courseIdOf(nextCourse);
     const latestFromStorage = readLatestLessonActivity({ user });
     const latestCourseId = String(latestFromStorage?.courseId || '').trim();
     if (
@@ -2030,6 +2095,12 @@ const DashboardPage = ({ user, onShowAuth }) => {
       latestFromStorage?.lessonId
     ) {
       navigate(`/course/${latestFromStorage.courseId}/lesson/${latestFromStorage.lessonId}`);
+      return;
+    }
+
+    const latestAttempt = getLatestAttemptRow(nextCourse);
+    if (nextCourseId && latestAttempt?.lessonId) {
+      navigate(`/course/${nextCourseId}/lesson/${latestAttempt.lessonId}`);
       return;
     }
 
@@ -2333,7 +2404,6 @@ const DashboardPage = ({ user, onShowAuth }) => {
   }, [homeSubjectsMaxPage]);
 
   useEffect(() => {
-    if (statsLoading) return undefined;
     const el = homeSubjectsScrollRef.current;
     if (!el) return undefined;
 
@@ -2359,10 +2429,9 @@ const DashboardPage = ({ user, onShowAuth }) => {
       ro.disconnect();
       window.removeEventListener('resize', updateVisibleCount);
     };
-  }, [homeSubjectCards.length, statsLoading]);
+  }, [homeSubjectCards.length]);
 
   useEffect(() => {
-    if (statsLoading) return;
     const el = homeSubjectsScrollRef.current;
     if (!el) return;
     const card = el.querySelector('.home-subject-card');
@@ -2370,7 +2439,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
     const gap = Number.parseFloat(getComputedStyle(el).gap) || 16;
     const step = card.getBoundingClientRect().width + gap;
     el.scrollTo({ left: homeSubjectsPage * step, behavior: 'smooth' });
-  }, [homeSubjectsPage, homeSubjectCards.length, statsLoading]);
+  }, [homeSubjectsPage, homeSubjectCards.length]);
 
   const homeRecommendTopics = useMemo(() => {
     const items = [];
@@ -2530,11 +2599,19 @@ const DashboardPage = ({ user, onShowAuth }) => {
       return 'เลือกวิชาที่อยากพัฒนาเพื่อเริ่มเก็บคะแนน';
     }
 
-    const nextCourseId = String(nextCourse?.id || nextCourse?.course_id || '').trim();
+    const nextCourseId = courseIdOf(nextCourse);
     const stored = readLatestLessonActivity({ user });
     const storedTitle = String(stored?.lessonTitle || '').trim();
     if (storedTitle && String(stored?.courseId || '').trim() === nextCourseId) {
       return storedTitle;
+    }
+
+    const latestAttempt = getLatestAttemptRow(nextCourse);
+    if (latestAttempt?.lessonName) {
+      return String(latestAttempt.lessonName).trim();
+    }
+    if (latestAttempt?.quizTitle) {
+      return String(latestAttempt.quizTitle).trim();
     }
 
     const lessonRows = Array.isArray(nextCourse?.lessonRows) ? nextCourse.lessonRows : [];
@@ -2795,18 +2872,11 @@ const DashboardPage = ({ user, onShowAuth }) => {
                   <section className="dashboard-greeting-row home-greeting">
                     <div>
                       <h1>สวัสดีครับ {displayName || 'ผู้ใช้'} 👋</h1>
-                      {statsLoading ? (
-                        <span className="home-skeleton-line w-72 greeting-sub" aria-hidden="true" />
-                      ) : (
-                        <p>พร้อมลุยทำแบบฝึกหัดให้เก่งขึ้นไปอีกขั้น!</p>
-                      )}
+                      <p>พร้อมลุยทำแบบฝึกหัดให้เก่งขึ้นไปอีกขั้น!</p>
                     </div>
                   </section>
 
-                  {statsLoading ? (
-                    <HomeDashboardSkeleton />
-                  ) : (
-                    <>
+                  <>
                   <section className="home-hero-grid">
                     <div className="home-hero-recommend">
                       <span className="home-hero-kicker">วิชาที่แนะนำสำหรับวันนี้</span>
@@ -2820,16 +2890,26 @@ const DashboardPage = ({ user, onShowAuth }) => {
                         <p className="home-hero-lesson home-hero-lesson-muted">{homeLatestLessonTitle}</p>
                       )}
                       <div className="home-hero-progress">
-                        <p className="home-hero-progress-count">{homeHeroQuestionProgressLabel}</p>
-                        <div className="home-hero-progress-track">
-                          <span style={{ width: `${nextCourseProgressPercent > 0 ? Math.max(4, nextCourseProgressPercent) : 0}%` }} />
-                        </div>
-                        <small>
-                          ความคืบหน้า{' '}
-                          <span className="home-hero-progress-value">{nextCourseProgressPercent}%</span>
-                        </small>
+                        {statsLoading ? (
+                          <>
+                            <span className="home-skeleton-line w-64" aria-hidden="true" />
+                            <div className="home-skeleton-progress-track" aria-hidden="true" />
+                            <span className="home-skeleton-line w-36" aria-hidden="true" />
+                          </>
+                        ) : (
+                          <>
+                            <p className="home-hero-progress-count">{homeHeroQuestionProgressLabel}</p>
+                            <div className="home-hero-progress-track">
+                              <span style={{ width: `${nextCourseProgressPercent > 0 ? Math.max(4, nextCourseProgressPercent) : 0}%` }} />
+                            </div>
+                            <small>
+                              ความคืบหน้า{' '}
+                              <span className="home-hero-progress-value">{nextCourseProgressPercent}%</span>
+                            </small>
+                          </>
+                        )}
                       </div>
-                      <img className="home-hero-mascot" src={heroMascotImage} alt="" loading="lazy" />
+                      <img className="home-hero-mascot" src={homeHeroMascotImage} alt="" loading="lazy" />
                     </div>
 
                     <div className="home-hero-cta">
@@ -2838,7 +2918,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
                         type="button"
                         className="home-hero-cta-btn"
                         onClick={handlePrimaryCTA}
-                        disabled={statsLoading}
+                        disabled={coursesShellLoading && !hasCourses}
                       >
                         <span>{hasCourses ? 'เริ่มทำแบบฝึกหัดต่อ' : 'เลือกคอร์สแรกของคุณ'}</span>
                         <ArrowRight size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -2857,9 +2937,12 @@ const DashboardPage = ({ user, onShowAuth }) => {
                         </div>
                       </div>
                       <div className="home-streak-week" aria-label="สรุปการฝึกรายสัปดาห์">
-                        {(homeWeekActivity.length
-                          ? homeWeekActivity
-                          : WEEKDAY_LABELS.map((label) => ({ label, isActive: false, isToday: false }))
+                        {(statsLoading
+                          ? WEEKDAY_LABELS.map((label) => ({ label, isActive: false, isToday: false }))
+                          : (homeWeekActivity.length
+                            ? homeWeekActivity
+                            : WEEKDAY_LABELS.map((label) => ({ label, isActive: false, isToday: false }))
+                          )
                         ).map((day, index) => (
                           <span
                             key={`home-streak-${day.dayKey || day.label || index}`}
@@ -2906,7 +2989,24 @@ const DashboardPage = ({ user, onShowAuth }) => {
                             </div>
                           ) : null}
                         </div>
-                        {homeSubjectCards.length > 0 ? (
+                        {coursesShellLoading && homeSubjectCards.length === 0 ? (
+                          <div className="home-subjects-scroll" aria-hidden="true">
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <article key={`home-subject-skeleton-${index}`} className="home-subject-card home-skeleton-subject-card">
+                                <div className="home-skeleton-subject-top">
+                                  <div className="home-skeleton-subject-title">
+                                    <span className="home-skeleton-line w-52" />
+                                    <span className="home-skeleton-line w-36" />
+                                  </div>
+                                  <span className="home-skeleton-circle sm" />
+                                </div>
+                                <span className="home-skeleton-circle lg" />
+                                <span className="home-skeleton-line w-40" />
+                                <span className="home-skeleton-button secondary" />
+                              </article>
+                            ))}
+                          </div>
+                        ) : homeSubjectCards.length > 0 ? (
                           <div className="home-subjects-viewport">
                           <div
                             ref={homeSubjectsScrollRef}
@@ -2991,6 +3091,27 @@ const DashboardPage = ({ user, onShowAuth }) => {
                   </section>
 
                   <section className="home-progress-grid">
+                    {statsLoading ? (
+                      <div className="home-dashboard-skeleton home-progress-skeleton" role="status" aria-live="polite" aria-label="กำลังโหลดสถิติ">
+                        <article className="home-overall-card home-skeleton-overall" aria-hidden="true">
+                          <span className="home-skeleton-line w-44 h-md" />
+                          <div className="home-overall-stats">
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div key={`home-overall-skeleton-${index}`} className="home-overall-stat">
+                                <span className="home-skeleton-line w-32" />
+                                <span className="home-skeleton-line w-20 h-md" />
+                                <span className="home-skeleton-line w-24" />
+                              </div>
+                            ))}
+                          </div>
+                        </article>
+                        <article className="home-trend-card home-skeleton-trend" aria-hidden="true">
+                          <span className="home-skeleton-line w-40 h-md" />
+                          <span className="home-skeleton-line w-full h-lg" />
+                        </article>
+                      </div>
+                    ) : (
+                      <>
                     <article className="home-overall-card">
                       <div className="home-section-head">
                         <h2>ความก้าวหน้าโดยรวม</h2>
@@ -3129,9 +3250,10 @@ const DashboardPage = ({ user, onShowAuth }) => {
                         <div className="home-trend-empty">ยังไม่มีข้อมูลเพียงพอสำหรับกราฟพัฒนาการ</div>
                       )}
                     </article>
+                      </>
+                    )}
                   </section>
-                    </>
-                  )}
+                  </>
                 </>
               )}
 
@@ -3144,7 +3266,7 @@ const DashboardPage = ({ user, onShowAuth }) => {
                     </div>
                   </header>
 
-                  {statsLoading ? (
+                  {coursesShellLoading && enrichedEnrolledCourses.length === 0 ? (
                     <MyCoursesSkeleton />
                   ) : enrichedEnrolledCourses.length === 0 ? (
                     <div className="my-courses-empty">
@@ -3190,21 +3312,41 @@ const DashboardPage = ({ user, onShowAuth }) => {
                       <article className="my-course-overview">
                         <h3>ภาพรวมของคอร์ส: {selectedMyCourse?.name || selectedMyCourse?.title || 'คอร์สเรียน'}</h3>
                         <div className="my-course-kpi-grid">
-                          <div className="my-kpi-card">
-                            <span>คะแนนเฉลี่ย</span>
-                            <strong>{myCourseKpis.avgScore}%</strong>
+                          <div className="my-kpi-card my-kpi-card-score">
+                            <div className="my-kpi-copy">
+                              <span>คะแนนเฉลี่ย</span>
+                              <strong>{myCourseKpis.avgScore}%</strong>
+                            </div>
+                            <span className="my-kpi-icon" aria-hidden="true">
+                              <BarChart3 size={22} strokeWidth={2.2} />
+                            </span>
                           </div>
-                          <div className="my-kpi-card">
-                            <span>ความแม่นยำ</span>
-                            <strong>{myCourseKpis.accuracy}%</strong>
+                          <div className="my-kpi-card my-kpi-card-accuracy">
+                            <div className="my-kpi-copy">
+                              <span>ความแม่นยำ</span>
+                              <strong>{myCourseKpis.accuracy}%</strong>
+                            </div>
+                            <span className="my-kpi-icon" aria-hidden="true">
+                              <Target size={22} strokeWidth={2.2} />
+                            </span>
                           </div>
-                          <div className="my-kpi-card">
-                            <span>ทำข้อสอบทั้งหมด</span>
-                            <strong>{myCourseKpis.totalQuizzes} ชุด</strong>
+                          <div className="my-kpi-card my-kpi-card-quizzes">
+                            <div className="my-kpi-copy">
+                              <span>ทำข้อสอบทั้งหมด</span>
+                              <strong>{myCourseKpis.totalQuizzes} ชุด</strong>
+                            </div>
+                            <span className="my-kpi-icon" aria-hidden="true">
+                              <ClipboardList size={22} strokeWidth={2.2} />
+                            </span>
                           </div>
-                          <div className="my-kpi-card">
-                            <span>เวลาเรียนสัปดาห์นี้</span>
-                            <strong>{myCourseKpis.minutes} นาที</strong>
+                          <div className="my-kpi-card my-kpi-card-time">
+                            <div className="my-kpi-copy">
+                              <span>เวลาเรียนสัปดาห์นี้</span>
+                              <strong>{myCourseKpis.minutes} นาที</strong>
+                            </div>
+                            <span className="my-kpi-icon" aria-hidden="true">
+                              <Clock3 size={22} strokeWidth={2.2} />
+                            </span>
                           </div>
                         </div>
 

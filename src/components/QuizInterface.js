@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { secureAPI } from '../utils/api';
 import { startEngagementTracker } from '../utils/engagementTracking';
+import { saveLatestLessonActivity, touchLearningActivityDay } from '../utils/learningActivity';
 import { extractQuestionContextText } from '../utils/questionContext';
 import { trackEvent } from '../utils/analytics';
 import MathText from './MathText';
@@ -438,6 +439,24 @@ const QuizInterface = forwardRef(({ course, user, lessonId = null, onBackToCours
         correct_count: correctAnswers,
         duration_seconds: Math.max(0, timeSpent),
       });
+      const resolvedCourseId = course?.id || course?.course_id;
+      if (lessonId && resolvedCourseId) {
+        saveLatestLessonActivity({
+          user,
+          courseId: resolvedCourseId,
+          lessonId,
+          courseName: course?.name || course?.title || '',
+          lessonTitle: selectedQuiz?.lessonTitle || selectedQuiz?.lesson_name || '',
+        });
+      } else {
+        touchLearningActivityDay({
+          user,
+          courseId: resolvedCourseId,
+          lessonId,
+          courseName: course?.name || course?.title || '',
+          lessonTitle: selectedQuiz?.title || selectedQuiz?.name || '',
+        });
+      }
       if (onResultStored) {
         try { onResultStored(quizId, resp); } catch (_) {}
       }

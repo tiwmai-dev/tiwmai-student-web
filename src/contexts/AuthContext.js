@@ -303,9 +303,38 @@ export const AuthProvider = ({ children }) => {
 
       const userData = await response.json();
       const activeToken = getStoredAccessToken() || token;
-      const fullUserData = await enrichUserData(activeToken, userData);
-      setUser((prev) => mergeUserWithStableOnboarding(prev, fullUserData));
-      return fullUserData;
+      const fallbackName = userData?.given_name || userData?.username || 'นักเรียน';
+      const baseUserData = {
+        ...userData,
+        name: fallbackName,
+        studentId: userData?.student_id || userData?.username || userData?.user_id,
+        onboarding: UNKNOWN_ONBOARDING,
+        enrolledCourses: [],
+      };
+      setUser((prev) => mergeUserWithStableOnboarding(prev, baseUserData));
+
+      if (finishBootstrapping) {
+        setIsBootstrapping(false);
+      }
+
+      try {
+        const onboarding = await getStudentOnboarding(activeToken);
+        const profile = onboarding?.profile || null;
+        const fullUserData = {
+          ...baseUserData,
+          name: profile?.nickname || fallbackName,
+          avatar_url: profile?.avatar_url || userData?.avatar_url,
+          onboarding,
+        };
+        setUser((prev) => mergeUserWithStableOnboarding(prev, fullUserData));
+        return fullUserData;
+      } catch (enrichError) {
+        if (enrichError?.code === AUTH_SESSION_INVALID_CODE) {
+          throw enrichError;
+        }
+        console.error('Failed to enrich user data:', enrichError);
+        return baseUserData;
+      }
     } catch (loadError) {
       console.error('Token validation failed:', loadError);
       if (clearOnFailure) {

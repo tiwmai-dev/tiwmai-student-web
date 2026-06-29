@@ -34,6 +34,41 @@ const handleApiError = async (response) => {
   return response;
 };
 
+const inFlightGetRequests = new Map();
+
+/**
+ * Coalesce identical in-flight GET requests (helps StrictMode double-mount and duplicate callers).
+ */
+const dedupeGetJson = (url, { retries = 0 } = {}) => {
+  const key = `GET:${url}`;
+  const existing = inFlightGetRequests.get(key);
+  if (existing) {
+    return existing;
+  }
+  const promise = (async () => {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        const response = await fetch(url, { headers: getAuthHeaders() });
+        await handleApiError(response);
+        return response.json();
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 400 * (attempt + 1));
+          });
+        }
+      }
+    }
+    throw lastError;
+  })().finally(() => {
+    inFlightGetRequests.delete(key);
+  });
+  inFlightGetRequests.set(key, promise);
+  return promise;
+};
+
 /**
  * Student Authentication APIs
  */
@@ -199,12 +234,8 @@ export const courseAPI = {
    */
   getUserCourses: async (userId) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/student/users/${userId}/enrolled-courses`, {
-        headers: getAuthHeaders(),
-      });
-
-      await handleApiError(response);
-      return await response.json();
+      const url = `${API_BASE_URL}/student/users/${encodeURIComponent(userId)}/enrolled-courses`;
+      return await dedupeGetJson(url);
     } catch (error) {
       console.error('Get user enrolled courses failed:', error);
       throw error;
@@ -219,15 +250,11 @@ export const courseAPI = {
       const params = new URLSearchParams();
       if (options.includeAi != null) params.set('include_ai', String(Boolean(options.includeAi)));
       if (options.courseLimit) params.set('course_limit', String(options.courseLimit));
+      if (options.skipCache) params.set('nocache', '1');
+      if (options.bustDedupe) params.set('_', String(Date.now()));
       const query = params.toString();
-      const response = await fetch(
-        `${API_BASE_URL}/student/users/${encodeURIComponent(userId)}/dashboard-learning-summary${query ? `?${query}` : ''}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-      await handleApiError(response);
-      return await response.json();
+      const url = `${API_BASE_URL}/student/users/${encodeURIComponent(userId)}/dashboard-learning-summary${query ? `?${query}` : ''}`;
+      return await dedupeGetJson(url, { retries: options.skipCache ? 0 : 1 });
     } catch (error) {
       console.error('Get dashboard learning summary failed:', error);
       throw error;
@@ -431,11 +458,8 @@ export const courseAPI = {
         params.set('quiz_ids', options.quizIds.join(','));
       }
       const query = params.toString();
-      const response = await fetch(`${API_BASE_URL}/student/courses/${courseId}/quizzes${query ? `?${query}` : ''}`, {
-        headers: getAuthHeaders(),
-      });
-      await handleApiError(response);
-      return await response.json();
+      const url = `${API_BASE_URL}/student/courses/${encodeURIComponent(courseId)}/quizzes${query ? `?${query}` : ''}`;
+      return await dedupeGetJson(url);
     } catch (error) {
       console.error('Get quizzes by course failed:', error);
       throw error;
@@ -450,12 +474,8 @@ export const courseAPI = {
       const params = new URLSearchParams();
       if (options.userId) params.set('user_id', String(options.userId));
       const query = params.toString();
-      const response = await fetch(`${API_BASE_URL}/student/courses/${courseId}/lessons${query ? `?${query}` : ''}`, {
-        headers: getAuthHeaders(),
-      });
-
-      await handleApiError(response);
-      return await response.json();
+      const url = `${API_BASE_URL}/student/courses/${encodeURIComponent(courseId)}/lessons${query ? `?${query}` : ''}`;
+      return await dedupeGetJson(url);
     } catch (error) {
       console.error('Get course lessons failed:', error);
       throw error;
